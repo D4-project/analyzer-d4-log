@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"bufio"
+
 	"github.com/D4-project/analyzer-d4-log/logparser"
 	config "github.com/D4-project/d4-golang-utils/config"
 	"github.com/gomodule/redigo/redis"
@@ -122,7 +124,7 @@ func main() {
 		log.Fatal("Missing Database Count in Redis config: should be host:port/max number of DB")
 	}
 	rp.redisDBCount, _ = strconv.Atoi(ss[1])
-	ret, ss[0] = config.IsNet(string(tmp))
+	ret, ss[0] = config.IsNet(ss[0])
 	if !ret {
 		sss := strings.Split(string(ss[0]), ":")
 		rp.redisHost = sss[0]
@@ -132,16 +134,20 @@ func main() {
 	// Create a connection Pool
 	redisParsers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
 
+	var torun = []logparser.Parser{}
 	// Init parser depending on the parser flags:
 	if *all {
 		// Init all parsers
-		var torun = []logparser.Parser{}
 		for _, v := range parsers {
 			switch v {
 			case "sshd":
 				var sshdrcon, err = redisParsers.Dial()
 				if err != nil {
 					log.Fatal("Could not connect to Parser Redis")
+				}
+				_, err = sshdrcon.Do("PING")
+				if err != nil {
+					log.Fatal("Could connect to the Redis database")
 				}
 				sshd := logparser.New(&sshdrcon)
 				torun = append(torun, sshd)
@@ -151,8 +157,31 @@ func main() {
 		log.Println("TODO should run specific parser here")
 	}
 
-	// Run the parsers
-	log.Println("TODO should run the parsers here")
+	f, err = os.Open("./test_seed.log")
+	if err != nil {
+		log.Fatalf("Error opening test file: %v", err)
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+
+		// Pop D4 redis queue
+		//for {
+
+		// err := errors.New("")
+		// logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
+		logline := scanner.Text()
+		// if err != nil {
+		// log.Fatal(err)
+		// }
+		// fmt.Println(logline)
+
+		// Run the parsers
+		for _, v := range torun {
+			v.Parse(logline)
+		}
+
+	}
 
 	log.Println("Exit")
 }
