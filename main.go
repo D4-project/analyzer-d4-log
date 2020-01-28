@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"bufio"
@@ -33,16 +34,23 @@ type (
 		httpHost string
 		httpPort string
 	}
+	comutex struct {
+		mu        sync.Mutex
+		compiling bool
+	}
 )
 
 // Setting up flags
 var (
-	confdir      = flag.String("c", "conf.sample", "configuration directory")
-	all          = flag.Bool("a", true, "run all parsers when set. Set by default")
-	specific     = flag.String("o", "", "run only a specific parser [sshd]")
-	redisD4      redis.Conn
-	redisParsers *redis.Pool
-	parsers      = [1]string{"sshd"}
+	confdir            = flag.String("c", "conf.sample", "configuration directory")
+	all                = flag.Bool("a", true, "run all parsers when set. Set by default")
+	specific           = flag.String("o", "", "run only a specific parser [sshd]")
+	redisD4            redis.Conn
+	redisParsers       *redis.Pool
+	parsers            = [1]string{"sshd"}
+	compilationTrigger = 10
+	wg                 sync.WaitGroup
+	compiling          comutex
 )
 
 func main() {
@@ -135,6 +143,9 @@ func main() {
 	// Create a connection Pool
 	redisParsers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
 
+	// Line counter to trigger HTML compilation
+	nblines := 0
+
 	var torun = []logparser.Parser{}
 	// Init parser depending on the parser flags:
 	if *all {
@@ -185,10 +196,30 @@ func main() {
 				log.Fatal(err)
 			}
 		}
-
+		nblines++
+		if nblines > compilationTrigger {
+			nblines = 0
+			// Non-blocking
+			if !compiling.compiling {
+				go compile()
+			}
+		}
 	}
 
+	wg.Wait()
 	log.Println("Exit")
+}
+
+func compile() {
+	compiling.mu.Lock()
+	compiling.compiling = true
+	wg.Add(1)
+	log.Println("I should probably be writing")
+	time.Sleep(500 * time.Millisecond)
+	log.Println("Writing")
+	compiling.compiling = false
+	compiling.mu.Unlock()
+	wg.Done()
 }
 
 func newPool(addr string, maxconn int) *redis.Pool {
