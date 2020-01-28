@@ -2,7 +2,6 @@ package logparser
 
 import (
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
 	"time"
@@ -10,27 +9,15 @@ import (
 	"github.com/gomodule/redigo/redis"
 )
 
-// Sshd is a struct that corresponds to a line
-type Sshd struct {
-	Date string
-	Host string
-	User string
-	Src  string
-}
-
 // SshdParser Holds a struct that corresponds to a sshd log line
 // and the redis connection
 type SshdParser struct {
-	logs Sshd
-	r    *redis.Conn
+	r *redis.Conn
 }
 
-// New Creates a new sshd parser
-func New(rconn *redis.Conn) *SshdParser {
-	return &SshdParser{
-		logs: Sshd{},
-		r:    rconn,
-	}
+// Set set the redic connection to this parser
+func (s *SshdParser) Set(rconn *redis.Conn) {
+	s.r = rconn
 }
 
 // Parse parses a line of sshd log
@@ -54,43 +41,37 @@ func (s *SshdParser) Parse(logline string) error {
 	parsedTime, _ := time.ParseInLocation("Jan 02 15:04:05 2006", md["date"], loc)
 	md["date"] = string(strconv.FormatInt(parsedTime.Unix(), 10))
 
-	// Pushing logline in redis
-	redislog := fmt.Sprintf("HMSET %v:%v username \"%v\" src \"%v\"", md["date"], md["host"], md["username"], md["src"])
-	a, err := r.Do(redislog)
-	fmt.Println(a)
-	if err != nil {
-		log.Fatal("Could connect to the Redis database")
+	// Pushing loglines in database 0
+	if _, err := r.Do("SELECT", 0); err != nil {
+		r.Close()
+		return err
 	}
-	today := time.Now()
-	// Statistics
-	dailysrc := fmt.Sprintf("ZINCBY %v%v%v:statssrc 1 %v", today.Year(), int(today.Month()), today.Day(), md["src"])
-	_, err = r.Do(dailysrc)
+	_, err := redis.Bool(r.Do("HSET", fmt.Sprintf("%v:%v", md["date"], md["host"]), "username", md["username"], "src", md["src"]))
 	if err != nil {
-		log.Fatal("Could connect to the Redis database")
-	}
-	dailyusername := fmt.Sprintf("ZINCBY %v%v%v:statsusername 1 %v", today.Year(), int(today.Month()), today.Day(), md["username"])
-	fmt.Println(dailyusername)
-	_, err = r.Do(dailyusername)
-	if err != nil {
-		log.Fatal("Could connect to the Redis database")
-	}
-	dailyhost := fmt.Sprintf("ZINCBY %v%v%v:statshost 1 %v", today.Year(), int(today.Month()), today.Day(), md["host"])
-	_, err = r.Do(dailyhost)
-	if err != nil {
-		log.Fatal("Could connect to the Redis database")
+		r.Close()
+		return err
 	}
 
-	return nil
-}
+	// Pushing statistics in database 1
+	if _, err := r.Do("SELECT", 1); err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statssrc", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["src"]))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statsusername", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["username"]))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statshost", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["host"]))
+	if err != nil {
+		r.Close()
+		return err
+	}
 
-// Push pushed the parsed line into redis
-func (s *SshdParser) Push() error {
-	//TODO
-	return nil
-}
-
-// Pop returns the list of attributes
-func (s *SshdParser) Pop() map[string]string {
-	//TODO
 	return nil
 }

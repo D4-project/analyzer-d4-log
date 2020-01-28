@@ -111,6 +111,7 @@ func main() {
 	}
 	rd4.redisQueue = string(config.ReadConfigFile(*confdir, "redis_queue"))
 	// Connect to D4 Redis
+	// TODO use DialOptions to Dial with a timeout
 	redisD4, err = redis.Dial("tcp", rd4.redisHost+":"+rd4.redisPort, redis.DialDatabase(rd4.redisDB))
 	if err != nil {
 		log.Fatal(err)
@@ -149,8 +150,9 @@ func main() {
 				if err != nil {
 					log.Fatal("Could connect to the Redis database")
 				}
-				sshd := logparser.New(&sshdrcon)
-				torun = append(torun, sshd)
+				sshd := logparser.SshdParser{}
+				sshd.Set(&sshdrcon)
+				torun = append(torun, &sshd)
 			}
 		}
 	} else if *specific != "" {
@@ -178,7 +180,10 @@ func main() {
 
 		// Run the parsers
 		for _, v := range torun {
-			v.Parse(logline)
+			err := v.Parse(logline)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 
 	}
