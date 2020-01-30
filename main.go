@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -10,8 +11,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"bufio"
 
 	"github.com/D4-project/analyzer-d4-log/logparser"
 	config "github.com/D4-project/d4-golang-utils/config"
@@ -45,12 +44,14 @@ var (
 	confdir            = flag.String("c", "conf.sample", "configuration directory")
 	all                = flag.Bool("a", true, "run all parsers when set. Set by default")
 	specific           = flag.String("o", "", "run only a specific parser [sshd]")
+	debug              = flag.Bool("d", false, "debug info in logs")
 	redisD4            redis.Conn
 	redisParsers       *redis.Pool
 	parsers            = [1]string{"sshd"}
-	compilationTrigger = 10
+	compilationTrigger = 200
 	wg                 sync.WaitGroup
 	compiling          comutex
+	torun              = []logparser.Parser{}
 )
 
 func main() {
@@ -103,6 +104,11 @@ func main() {
 		*confdir = strings.TrimSuffix(*confdir, "\\")
 	}
 
+	// Debug log
+	if *debug {
+		log.SetFlags(log.LstdFlags | log.Lshortfile)
+	}
+
 	// Parse Redis D4 Config
 	tmp := config.ReadConfigFile(*confdir, "redis_d4")
 	ss := strings.Split(string(tmp), "/")
@@ -146,23 +152,22 @@ func main() {
 	// Line counter to trigger HTML compilation
 	nblines := 0
 
-	var torun = []logparser.Parser{}
 	// Init parser depending on the parser flags:
 	if *all {
 		// Init all parsers
 		for _, v := range parsers {
 			switch v {
 			case "sshd":
-				var sshdrcon, err = redisParsers.Dial()
+				sshdrcon1, err := redisParsers.Dial()
 				if err != nil {
-					log.Fatal("Could not connect to Parser Redis")
+					log.Fatal("Could not connect to Line one Redis")
 				}
-				_, err = sshdrcon.Do("PING")
+				sshdrcon2, err := redisParsers.Dial()
 				if err != nil {
-					log.Fatal("Could connect to the Redis database")
+					log.Fatal("Could not connect to Line one Redis")
 				}
 				sshd := logparser.SshdParser{}
-				sshd.Set(&sshdrcon)
+				sshd.Set(&sshdrcon1, &sshdrcon2)
 				torun = append(torun, &sshd)
 			}
 		}
@@ -175,19 +180,19 @@ func main() {
 		log.Fatalf("Error opening test file: %v", err)
 	}
 	defer f.Close()
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
+	// scanner := bufio.NewScanner(f)
+	// for scanner.Scan() {
 
-		// Pop D4 redis queue
-		//for {
+	// Pop D4 redis queue
+	for {
 
-		// err := errors.New("")
-		// logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
-		logline := scanner.Text()
-		// if err != nil {
-		// log.Fatal(err)
-		// }
-		// fmt.Println(logline)
+		err := errors.New("")
+		logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
+		// logline := scanner.Text()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Println(logline)
 
 		// Run the parsers
 		for _, v := range torun {
@@ -214,9 +219,17 @@ func compile() {
 	compiling.mu.Lock()
 	compiling.compiling = true
 	wg.Add(1)
-	log.Println("I should probably be writing")
-	time.Sleep(500 * time.Millisecond)
-	log.Println("Writing")
+
+	log.Println("Compiling")
+
+	for _, v := range torun {
+		err := v.Compile()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	log.Println("Done")
 	compiling.compiling = false
 	compiling.mu.Unlock()
 	wg.Done()

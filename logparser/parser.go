@@ -8,7 +8,8 @@ type (
 	//  Set to assign a redis connection to it
 	//  Parse to parse a line of log
 	Parser interface {
-		Set(*redis.Conn)
+		Set(*redis.Conn, *redis.Conn)
 		Parse(string) error
+		Compile() error
 	}
 )

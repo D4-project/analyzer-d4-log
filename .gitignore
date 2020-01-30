@@ -6,3 +6,6 @@ analyzer-d4-log
 
 # Results
 data*
+
+# Redis backups
+*.rdb

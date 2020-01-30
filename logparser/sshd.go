@@ -2,27 +2,37 @@ package logparser
 
 import (
 	"fmt"
+	"log"
+	"math"
+	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gomodule/redigo/redis"
+	"gonum.org/v1/plot"
+	"gonum.org/v1/plot/plotter"
+	"gonum.org/v1/plot/plotutil"
+	"gonum.org/v1/plot/vg"
 )
 
 // SshdParser Holds a struct that corresponds to a sshd log line
 // and the redis connection
 type SshdParser struct {
-	r *redis.Conn
+	r1 *redis.Conn
+	r2 *redis.Conn
 }
 
 // Set set the redic connection to this parser
-func (s *SshdParser) Set(rconn *redis.Conn) {
-	s.r = rconn
+func (s *SshdParser) Set(rconn1 *redis.Conn, rconn2 *redis.Conn) {
+	s.r1 = rconn1
+	s.r2 = rconn2
 }
 
 // Parse parses a line of sshd log
 func (s *SshdParser) Parse(logline string) error {
-	r := *s.r
+	r := *s.r1
 	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3}\s\d{2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>[^ ]+) from (?P<src>.*$)`)
 	n1 := re.SubexpNames()
 	r2 := re.FindAllStringSubmatch(logline, -1)[0]
@@ -71,6 +81,109 @@ func (s *SshdParser) Parse(logline string) error {
 	if err != nil {
 		r.Close()
 		return err
+	}
+
+	// Keeping track of which days we updated statistics for
+	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statssrc", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statsusername", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statshost", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	return nil
+}
+
+// Compile create graphs of the results
+func (s *SshdParser) Compile() error {
+	r := *s.r2
+
+	// Pulling statistics from database 1
+	if _, err := r.Do("SELECT", 1); err != nil {
+		r.Close()
+		return err
+	}
+
+	// List days for which we need to update statistic
+	toupdate, err := redis.Strings(r.Do("SMEMBERS", "toupdate"))
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	// Query statistics dor each day to update
+	for _, v := range toupdate {
+		zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
+		if err != nil {
+			r.Close()
+			return err
+		}
+
+		// Split keys and values - keep these ordered
+		values := plotter.Values{}
+		keys := make([]string, 0, len(zrank)/2)
+
+		for k, v := range zrank {
+			// keys
+			if (k % 2) == 0 {
+				keys = append(keys, zrank[k])
+				// values
+			} else {
+				fv, _ := strconv.ParseFloat(v, 64)
+				values = append(values, fv)
+			}
+		}
+
+		p, err := plot.New()
+		if err != nil {
+			panic(err)
+		}
+
+		stype := strings.Split(v, ":")
+		switch stype[1] {
+		case "statsusername":
+			p.Title.Text = "Usernames"
+		case "statssrc":
+			p.Title.Text = "Source IP"
+		case "statshost":
+			p.Title.Text = "Host"
+		default:
+			p.Title.Text = ""
+			log.Println("We should not reach this point, open an issue.")
+		}
+
+		p.Y.Label.Text = "Count"
+		w := 0.5 * vg.Centimeter
+		bc, err := plotter.NewBarChart(values, w)
+		bc.Horizontal = true
+		if err != nil {
+			return err
+		}
+		bc.LineStyle.Width = vg.Length(0)
+		bc.Color = plotutil.Color(0)
+
+		p.Add(bc)
+		p.NominalY(keys...)
+
+		// Create folder to store plots
+		if _, err := os.Stat(stype[0]); os.IsNotExist(err) {
+			os.Mkdir(stype[0], 0700)
+		}
+
+		xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
+		if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, fmt.Sprintf("data/%v/%v.svg", stype[0], v)); err != nil {
+			return err
+		}
+
 	}
 
 	return nil
