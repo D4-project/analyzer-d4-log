@@ -50,7 +50,7 @@ var (
 	redisD4            redis.Conn
 	redisParsers       *redis.Pool
 	parsers            = [1]string{"sshd"}
-	compilationTrigger = 200
+	compilationTrigger = 20
 	wg                 sync.WaitGroup
 	compiling          comutex
 	torun              = []logparser.Parser{}

@@ -68,34 +68,63 @@ func (s *SshdParser) Parse(logline string) error {
 		r.Close()
 		return err
 	}
-	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statssrc", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["src"]))
-	if err != nil {
-		r.Close()
-		return err
-	}
-	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statsusername", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["username"]))
-	if err != nil {
-		r.Close()
-		return err
-	}
-	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v%v%v:statshost", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day()), 1, md["host"]))
+
+	// Daily
+	dstr := fmt.Sprintf("%v%v%v", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())
+	err = compileStats(s, dstr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
 		return err
 	}
 
-	// Keeping track of which days we updated statistics for
-	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statssrc", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+	// Monthly
+	mstr := fmt.Sprintf("%v%v", parsedTime.Year(), int(parsedTime.Month()))
+	err = compileStats(s, mstr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
 		return err
 	}
-	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statsusername", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+
+	// Yearly
+	ystr := fmt.Sprintf("%v", parsedTime.Year())
+	err = compileStats(s, ystr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
 		return err
 	}
-	_, err = redis.Int(r.Do("SADD", "toupdate", fmt.Sprintf("%v%v%v:statshost", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())))
+
+	return nil
+}
+
+func compileStats(s *SshdParser, datestr string, mode string, src string, username string, host string) error {
+	r := *s.r1
+	_, err := redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statssrc"), 1, src))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statsusername"), 1, username))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statshost"), 1, host))
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statssrc")))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statsusername")))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statshost")))
 	if err != nil {
 		r.Close()
 		return err
@@ -114,88 +143,132 @@ func (s *SshdParser) Compile() error {
 		return err
 	}
 
-	// List days for which we need to update statistic
-	toupdate, err := redis.Strings(r.Do("SMEMBERS", "toupdate"))
+	// List days for which we need to update statistics
+	toupdateD, err := redis.Strings(r.Do("SMEMBERS", "toupdate:daily"))
 	if err != nil {
 		r.Close()
 		return err
 	}
 
-	// Query statistics dor each day to update
-	for _, v := range toupdate {
-		zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
+	// Plot statistics for each day to update
+	for _, v := range toupdateD {
+		err = plotStats(s, v)
 		if err != nil {
 			r.Close()
 			return err
 		}
+	}
 
-		// Split keys and values - keep these ordered
-		values := plotter.Values{}
-		keys := make([]string, 0, len(zrank)/2)
+	// List months for which we need to update statistics
+	toupdateM, err := redis.Strings(r.Do("SMEMBERS", "toupdate:monthly"))
+	if err != nil {
+		r.Close()
+		return err
+	}
 
-		for k, v := range zrank {
-			// keys
-			if (k % 2) == 0 {
-				keys = append(keys, zrank[k])
-				// values
-			} else {
-				fv, _ := strconv.ParseFloat(v, 64)
-				values = append(values, fv)
-			}
-		}
-
-		p, err := plot.New()
+	// Plot statistics for each month to update
+	for _, v := range toupdateM {
+		err = plotStats(s, v)
 		if err != nil {
-			panic(err)
+			r.Close()
+			return err
 		}
+	}
 
-		stype := strings.Split(v, ":")
-		switch stype[1] {
-		case "statsusername":
-			p.Title.Text = "Usernames"
-		case "statssrc":
-			p.Title.Text = "Source IP"
-		case "statshost":
-			p.Title.Text = "Host"
-		default:
-			p.Title.Text = ""
-			log.Println("We should not reach this point, open an issue.")
+	// List years for which we need to update statistics
+	toupdateY, err := redis.Strings(r.Do("SMEMBERS", "toupdate:yearly"))
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	// Plot statistics for each year to update
+	for _, v := range toupdateY {
+		err = plotStats(s, v)
+		if err != nil {
+			r.Close()
+			return err
 		}
+	}
 
-		p.Y.Label.Text = "Count"
-		w := 0.5 * vg.Centimeter
-		bc, err := plotter.NewBarChart(values, w)
-		bc.Horizontal = true
+	return nil
+}
+
+func plotStats(s *SshdParser, v string) error {
+	r := *s.r2
+	zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	// Split keys and values - keep these ordered
+	values := plotter.Values{}
+	keys := make([]string, 0, len(zrank)/2)
+
+	for k, v := range zrank {
+		// keys
+		if (k % 2) == 0 {
+			keys = append(keys, zrank[k])
+			// values
+		} else {
+			fv, _ := strconv.ParseFloat(v, 64)
+			values = append(values, fv)
+		}
+	}
+
+	p, err := plot.New()
+	if err != nil {
+		panic(err)
+	}
+
+	stype := strings.Split(v, ":")
+	fmt.Println(stype[0])
+	fmt.Println(stype[1])
+	switch stype[1] {
+	case "statsusername":
+		p.Title.Text = "Usernames"
+	case "statssrc":
+		p.Title.Text = "Source IP"
+	case "statshost":
+		p.Title.Text = "Host"
+	default:
+		p.Title.Text = ""
+		log.Println("We should not reach this point, open an issue.")
+	}
+
+	p.Y.Label.Text = "Count"
+	w := 0.5 * vg.Centimeter
+	bc, err := plotter.NewBarChart(values, w)
+	bc.Horizontal = true
+	if err != nil {
+		return err
+	}
+	bc.LineStyle.Width = vg.Length(0)
+	bc.Color = plotutil.Color(0)
+
+	p.Add(bc)
+	p.NominalY(keys...)
+
+	// Create folder to store plots
+
+	if _, err := os.Stat("data"); os.IsNotExist(err) {
+		err := os.Mkdir("data", 0700)
 		if err != nil {
 			return err
 		}
-		bc.LineStyle.Width = vg.Length(0)
-		bc.Color = plotutil.Color(0)
+	}
 
-		p.Add(bc)
-		p.NominalY(keys...)
-
-		// Create folder to store plots
-
-		if _, err := os.Stat("data"); os.IsNotExist(err) {
-			err := os.Mkdir("data", 0700)
-			if err != nil {
-				return err
-			}
-		}
-
-		if _, err := os.Stat(filepath.Join("data", stype[0])); os.IsNotExist(err) {
-			err := os.Mkdir(filepath.Join("data", stype[0]), 0700)
-			if err != nil {
-				return err
-			}
-		}
-
-		xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
-		if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
+	if _, err := os.Stat(filepath.Join("data", stype[0])); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", stype[0]), 0700)
+		if err != nil {
 			return err
 		}
+	}
 
+	xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
+	if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
+		return err
 	}
 
 	return nil
