@@ -1,7 +1,7 @@
 package main
 
 import (
-	"errors"
+	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -45,6 +45,8 @@ var (
 	all                = flag.Bool("a", true, "run all parsers when set. Set by default")
 	specific           = flag.String("o", "", "run only a specific parser [sshd]")
 	debug              = flag.Bool("d", false, "debug info in logs")
+	fromfile           = flag.String("f", "", "parse from file on disk")
+	retry              = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
 	redisD4            redis.Conn
 	redisParsers       *redis.Pool
 	parsers            = [1]string{"sshd"}
@@ -175,38 +177,56 @@ func main() {
 		log.Println("TODO should run specific parser here")
 	}
 
-	f, err = os.Open("./test_seed.log")
-	if err != nil {
-		log.Fatalf("Error opening test file: %v", err)
-	}
-	defer f.Close()
-	// scanner := bufio.NewScanner(f)
-	// for scanner.Scan() {
-
-	// Pop D4 redis queue
-	for {
-
-		err := errors.New("")
-		logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
-		// logline := scanner.Text()
+	// Parsing loop
+	if *fromfile != "" {
+		f, err = os.Open(*fromfile)
 		if err != nil {
-			log.Fatal(err)
+			log.Fatalf("Error opening seed file: %v", err)
 		}
-		fmt.Println(logline)
-
-		// Run the parsers
-		for _, v := range torun {
-			err := v.Parse(logline)
-			if err != nil {
-				log.Fatal(err)
+		defer f.Close()
+		scanner := bufio.NewScanner(f)
+		for scanner.Scan() {
+			logline := scanner.Text()
+			for _, v := range torun {
+				err := v.Parse(logline)
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
+			nblines++
+			if nblines > compilationTrigger {
+				nblines = 0
+				// Non-blocking
+				if !compiling.compiling {
+					go compile()
+				}
 			}
 		}
-		nblines++
-		if nblines > compilationTrigger {
-			nblines = 0
-			// Non-blocking
-			if !compiling.compiling {
-				go compile()
+	} else {
+		// Pop D4 redis queue
+		for {
+			logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
+			if err == redis.ErrNil {
+				// redis queue empty, let's sleep for a while
+				time.Sleep(time.Duration(*retry) * time.Minute)
+			} else if err != nil {
+				log.Fatal(err)
+				// let's parse
+			} else {
+				for _, v := range torun {
+					err := v.Parse(logline)
+					if err != nil {
+						log.Fatal(err)
+					}
+				}
+				nblines++
+				if nblines > compilationTrigger {
+					nblines = 0
+					// Non-blocking
+					if !compiling.compiling {
+						go compile()
+					}
+				}
 			}
 		}
 	}

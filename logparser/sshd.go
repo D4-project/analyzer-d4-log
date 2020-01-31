@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -175,12 +176,23 @@ func (s *SshdParser) Compile() error {
 		p.NominalY(keys...)
 
 		// Create folder to store plots
-		if _, err := os.Stat(stype[0]); os.IsNotExist(err) {
-			os.Mkdir(stype[0], 0700)
+
+		if _, err := os.Stat("data"); os.IsNotExist(err) {
+			err := os.Mkdir("data", 0700)
+			if err != nil {
+				return err
+			}
+		}
+
+		if _, err := os.Stat(filepath.Join("data", stype[0])); os.IsNotExist(err) {
+			err := os.Mkdir(filepath.Join("data", stype[0]), 0700)
+			if err != nil {
+				return err
+			}
 		}
 
 		xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
-		if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, fmt.Sprintf("data/%v/%v.svg", stype[0], v)); err != nil {
+		if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
 			return err
 		}
 
