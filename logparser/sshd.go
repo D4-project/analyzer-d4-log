@@ -33,7 +33,7 @@ func (s *SshdParser) Set(rconn1 *redis.Conn, rconn2 *redis.Conn) {
 // Parse parses a line of sshd log
 func (s *SshdParser) Parse(logline string) error {
 	r := *s.r1
-	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3}\s\d{2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>[^ ]+) from (?P<src>.*$)`)
+	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3}\s\d{2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
 	n1 := re.SubexpNames()
 	r2 := re.FindAllStringSubmatch(logline, -1)[0]
 
