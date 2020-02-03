@@ -34,7 +34,7 @@ func (s *SshdParser) Set(rconn1 *redis.Conn, rconn2 *redis.Conn) {
 // Parse parses a line of sshd log
 func (s *SshdParser) Parse(logline string) error {
 	r := *s.r1
-	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3}\s\d{2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
+	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3} {1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
 	n1 := re.SubexpNames()
 	r2 := re.FindAllStringSubmatch(logline, -1)[0]
 
@@ -47,9 +47,9 @@ func (s *SshdParser) Parse(logline string) error {
 
 	// Assumes the system parses logs recorded during the current year
 	md["date"] = fmt.Sprintf("%v %v", md["date"], time.Now().Year())
-	// Make this automatic or a config parameter
+	// TODO Make this automatic or a config parameter
 	loc, _ := time.LoadLocation("Europe/Luxembourg")
-	parsedTime, _ := time.ParseInLocation("Jan 02 15:04:05 2006", md["date"], loc)
+	parsedTime, _ := time.ParseInLocation("Jan  2 15:04:05 2006", md["date"], loc)
 	md["date"] = string(strconv.FormatInt(parsedTime.Unix(), 10))
 
 	// Pushing loglines in database 0
@@ -223,8 +223,6 @@ func plotStats(s *SshdParser, v string) error {
 	}
 
 	stype := strings.Split(v, ":")
-	fmt.Println(stype[0])
-	fmt.Println(stype[1])
 	switch stype[1] {
 	case "statsusername":
 		p.Title.Text = "Usernames"
