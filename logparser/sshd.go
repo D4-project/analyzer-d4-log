@@ -71,6 +71,43 @@ func (s *SshdParser) Parse(logline string) error {
 
 	// Daily
 	dstr := fmt.Sprintf("%v%v%v", parsedTime.Year(), fmt.Sprintf("%02d", int(parsedTime.Month())), fmt.Sprintf("%02d", int(parsedTime.Day())))
+
+	// Check current entry date as oldest if older than the current
+	var oldest string
+	if oldest, err = redis.String(r.Do("GET", "oldest")); err == redis.ErrNil {
+		r.Do("SET", "oldest", dstr)
+	} else if err != nil {
+		r.Close()
+		return err
+	} else {
+		// Check if dates are the same
+		if oldest != dstr {
+			// Check who is the oldest
+			parsedOldest, _ := time.Parse("2006-01-02", oldest)
+			if parsedTime.Before(parsedOldest) {
+				r.Do("SET", "oldest", dstr)
+			}
+		}
+	}
+
+	// Check current entry date as oldest if older than the current
+	var newest string
+	if newest, err = redis.String(r.Do("GET", "newest")); err == redis.ErrNil {
+		r.Do("SET", "newest", dstr)
+	} else if err != nil {
+		r.Close()
+		return err
+	} else {
+		// Check if dates are the same
+		if newest != dstr {
+			// Check who is the newest
+			parsedNewest, _ := time.Parse("2006-01-02", newest)
+			if parsedTime.After(parsedNewest) {
+				r.Do("SET", "newest", dstr)
+			}
+		}
+	}
+
 	err = compileStats(s, dstr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
