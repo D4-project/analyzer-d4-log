@@ -52,6 +52,12 @@ var expected = map[int]map[string]string{
 		"username": "",
 		"src":      "185.56.8.191",
 	},
+	7: map[string]string{
+		"date":     "Feb  3 06:50:51",
+		"host":     "sigmund",
+		"username": "apples",
+		"src":      "37.117.180.69",
+	},
 }
 
 func TestSshdParser(t *testing.T) {
@@ -65,7 +71,7 @@ func TestSshdParser(t *testing.T) {
 	scanner := bufio.NewScanner(f)
 	c := 0
 	for scanner.Scan() {
-		re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3}\s\d{2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
+		re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3} {1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
 		n1 := re.SubexpNames()
 		r2 := re.FindAllStringSubmatch(scanner.Text(), -1)[0]
 

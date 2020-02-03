@@ -166,7 +166,7 @@ func main() {
 				}
 				sshdrcon2, err := redisParsers.Dial()
 				if err != nil {
-					log.Fatal("Could not connect to Line one Redis")
+					log.Fatal("Could not connect to Line two Redis")
 				}
 				sshd := logparser.SshdParser{}
 				sshd.Set(&sshdrcon1, &sshdrcon2)
