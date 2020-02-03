@@ -2,6 +2,7 @@ package logparser
 
 import (
 	"fmt"
+	"html/template"
 	"log"
 	"math"
 	"os"
@@ -83,7 +84,7 @@ func (s *SshdParser) Parse(logline string) error {
 		// Check if dates are the same
 		if oldest != dstr {
 			// Check who is the oldest
-			parsedOldest, _ := time.Parse("2006-01-02", oldest)
+			parsedOldest, _ := time.Parse("20060102", oldest)
 			if parsedTime.Before(parsedOldest) {
 				r.Do("SET", "oldest", dstr)
 			}
@@ -101,7 +102,7 @@ func (s *SshdParser) Parse(logline string) error {
 		// Check if dates are the same
 		if newest != dstr {
 			// Check who is the newest
-			parsedNewest, _ := time.Parse("2006-01-02", newest)
+			parsedNewest, _ := time.Parse("20060102", newest)
 			if parsedTime.After(parsedNewest) {
 				r.Do("SET", "newest", dstr)
 			}
@@ -228,6 +229,95 @@ func (s *SshdParser) Compile() error {
 		}
 	}
 
+	// Write html file for navigating plots
+	const tpl = `
+	<!DOCTYPE html>
+	<html>
+		<head>
+			<meta charset="UTF-8">
+			<title>{{.Title}}</title>
+			<script>
+				var currentType = "statsusername";
+				var currentDay = {{.MaxDate}};
+			</script>
+			<script src="load.js"></script>
+			<style>
+			body {
+				background: white
+			}
+			#imageholder {
+				background: black;
+				color: white;
+				padding: 1em;
+				position: absolute;
+				top: 50%;
+				left: 50%;
+				margin-right: -50%;
+				transform: translate(-50%, -40%)
+			}
+			span {
+				float: left;
+				clear: left;
+			}
+		  	</style>
+		</head>
+		<body onload="loadImage({{.Current}}, currentType)">
+			<span>
+			<label for="statsday">Statistics for: </label>
+			<input id="statsday" type="date" value="{{.MaxDate}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentDay = this.value.replace(/-/g, ''); loadImage(currentDay, currentType)"/>
+			</span>
+			<span>
+			<label for="statstype">Type: </label>
+			 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentDay.replace(/-/g, ''), currentType)">
+				<option value="statsusername">Usernames</option>
+				<option value="statssrc">Sources</option>
+				<option value="statshost">Hosts</option>
+		 	 </select> 
+			</span>
+			<span id="imageholder"></span>
+		</body>
+	</html>`
+
+	// Get oldest / newest entries
+	var newest string
+	var oldest string
+	if newest, err = redis.String(r.Do("GET", "newest")); err == redis.ErrNil {
+		r.Close()
+		return err
+	}
+	if oldest, err = redis.String(r.Do("GET", "oldest")); err == redis.ErrNil {
+		r.Close()
+		return err
+	}
+	parsedOldest, _ := time.Parse("20060102", oldest)
+	parsedNewest, _ := time.Parse("20060102", newest)
+	parsedOldestStr := parsedOldest.Format("2006-01-02")
+	parsedNewestStr := parsedNewest.Format("2006-01-02")
+
+	check := func(err error) {
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+	t, err := template.New("webpage").Parse(tpl)
+	check(err)
+
+	data := struct {
+		Title   string
+		Current string
+		MinDate string
+		MaxDate string
+	}{
+		Title:   "sshd failed logins statistics",
+		MinDate: parsedOldestStr,
+		MaxDate: parsedNewestStr,
+		Current: newest,
+	}
+	f, err := os.OpenFile("statistics.html", os.O_RDWR|os.O_CREATE, 0666)
+	defer f.Close()
+	err = t.Execute(f, data)
+	check(err)
+
 	return nil
 }
 
@@ -286,7 +376,6 @@ func plotStats(s *SshdParser, v string) error {
 	p.NominalY(keys...)
 
 	// Create folder to store plots
-
 	if _, err := os.Stat("data"); os.IsNotExist(err) {
 		err := os.Mkdir("data", 0700)
 		if err != nil {
@@ -294,15 +383,22 @@ func plotStats(s *SshdParser, v string) error {
 		}
 	}
 
-	if _, err := os.Stat(filepath.Join("data", stype[0])); os.IsNotExist(err) {
-		err := os.Mkdir(filepath.Join("data", stype[0]), 0700)
+	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join("data", "sshd", stype[0])); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", "sshd", stype[0]), 0700)
 		if err != nil {
 			return err
 		}
 	}
 
 	xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
-	if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
+	if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", "sshd", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
 		return err
 	}
 
