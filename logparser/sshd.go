@@ -70,7 +70,7 @@ func (s *SshdParser) Parse(logline string) error {
 	}
 
 	// Daily
-	dstr := fmt.Sprintf("%v%v%v", parsedTime.Year(), int(parsedTime.Month()), parsedTime.Day())
+	dstr := fmt.Sprintf("%v%v%v", parsedTime.Year(), fmt.Sprintf("%02d", int(parsedTime.Month())), fmt.Sprintf("%02d", int(parsedTime.Day())))
 	err = compileStats(s, dstr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
@@ -78,7 +78,7 @@ func (s *SshdParser) Parse(logline string) error {
 	}
 
 	// Monthly
-	mstr := fmt.Sprintf("%v%v", parsedTime.Year(), int(parsedTime.Month()))
+	mstr := fmt.Sprintf("%v%v", parsedTime.Year(), fmt.Sprintf("%02d", int(parsedTime.Month())))
 	err = compileStats(s, mstr, "daily", md["src"], md["username"], md["host"])
 	if err != nil {
 		r.Close()
