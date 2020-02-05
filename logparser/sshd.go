@@ -335,6 +335,11 @@ func (s *SshdParser) Compile() error {
 			<span>
 			<label for="statsday">Statistics for: </label>
 			<input id="statsday" type="date" value="{{.MaxDate}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentDay = this.value.replace(/-/g, ''); loadImage(currentDay, currentType)"/>
+			<select>
+				{{range .YearList}}
+   				  <option value="{{.}}">{{.}}</option>
+				{{end}}
+			</select>
 			</span>
 			<span>
 			<label for="statstype">Type: </label>
@@ -364,29 +369,92 @@ func (s *SshdParser) Compile() error {
 	parsedOldestStr := parsedOldest.Format("2006-01-02")
 	parsedNewestStr := parsedNewest.Format("2006-01-02")
 
-	check := func(err error) {
-		if err != nil {
-			log.Fatal(err)
+	// Gettings list of years for which we have statistics
+	reply, err := redis.Values(r.Do("SCAN", "0", "MATCH", "????:*", "COUNT", 1000))
+	if err != nil {
+		r.Close()
+		return err
+	}
+	var cursor int64
+	var items []string
+	_, err = redis.Scan(reply, &cursor, &items)
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	var years []string
+	for _, v := range items {
+		yearSplit := strings.Split(v, ":")
+		found := false
+		for _, y := range years {
+			if y == yearSplit[0] {
+				found = true
+			}
+		}
+		if !found {
+			years = append(years, yearSplit[0])
 		}
 	}
+
+	// Gettings list of months for which we have statistics
+	months := make(map[string][]string)
+	for _, v := range years {
+		var mraw []string
+		reply, err = redis.Values(r.Do("SCAN", "0", "MATCH", v+"??:*", "COUNT", 1000))
+		if err != nil {
+			r.Close()
+			return err
+		}
+
+		_, err = redis.Scan(reply, &cursor, &mraw)
+		if err != nil {
+			r.Close()
+			return err
+		}
+		for _, m := range mraw {
+			m = strings.TrimPrefix(m, v)
+			monthSplit := strings.Split(m, ":")
+			found := false
+			for _, y := range months[v] {
+				if y == monthSplit[0] {
+					found = true
+				}
+			}
+			if !found {
+				months[v] = append(months[v], monthSplit[0])
+			}
+		}
+	}
+
 	t, err := template.New("webpage").Parse(tpl)
-	check(err)
+	if err != nil {
+		r.Close()
+		return err
+	}
 
 	data := struct {
-		Title   string
-		Current string
-		MinDate string
-		MaxDate string
+		Title     string
+		Current   string
+		MinDate   string
+		MaxDate   string
+		YearList  []string
+		MonthList map[string][]string
 	}{
-		Title:   "sshd failed logins statistics",
-		MinDate: parsedOldestStr,
-		MaxDate: parsedNewestStr,
-		Current: newest,
+		Title:     "sshd failed logins statistics",
+		MinDate:   parsedOldestStr,
+		MaxDate:   parsedNewestStr,
+		Current:   newest,
+		YearList:  years,
+		MonthList: months,
 	}
 	f, err := os.OpenFile("statistics.html", os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 	err = t.Execute(f, data)
-	check(err)
+	if err != nil {
+		r.Close()
+		return err
+	}
 
 	return nil
 }
@@ -416,7 +484,8 @@ func plotStats(s *SshdParser, v string) error {
 
 	p, err := plot.New()
 	if err != nil {
-		panic(err)
+		r.Close()
+		return err
 	}
 
 	stype := strings.Split(v, ":")
@@ -449,6 +518,7 @@ func plotStats(s *SshdParser, v string) error {
 	if _, err := os.Stat("data"); os.IsNotExist(err) {
 		err := os.Mkdir("data", 0700)
 		if err != nil {
+			r.Close()
 			return err
 		}
 	}
@@ -456,6 +526,7 @@ func plotStats(s *SshdParser, v string) error {
 	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
 		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
 		if err != nil {
+			r.Close()
 			return err
 		}
 	}
@@ -463,12 +534,14 @@ func plotStats(s *SshdParser, v string) error {
 	if _, err := os.Stat(filepath.Join("data", "sshd", stype[0])); os.IsNotExist(err) {
 		err := os.Mkdir(filepath.Join("data", "sshd", stype[0]), 0700)
 		if err != nil {
+			r.Close()
 			return err
 		}
 	}
 
 	xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
 	if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", "sshd", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
+		r.Close()
 		return err
 	}
 

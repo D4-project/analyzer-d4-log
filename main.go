@@ -189,6 +189,7 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
+			compile()
 		}
 		// Parsing loop
 	} else if *fromfile != "" {
