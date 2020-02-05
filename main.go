@@ -47,6 +47,7 @@ var (
 	debug              = flag.Bool("d", false, "debug info in logs")
 	fromfile           = flag.String("f", "", "parse from file on disk")
 	retry              = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
+	flush              = flag.Bool("F", false, "Flush HTML output, recompile all statistic from redis logs, then quits")
 	redisD4            redis.Conn
 	redisParsers       *redis.Pool
 	parsers            = [1]string{"sshd"}
@@ -111,36 +112,40 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
-	// Parse Redis D4 Config
-	tmp := config.ReadConfigFile(*confdir, "redis_d4")
-	ss := strings.Split(string(tmp), "/")
-	if len(ss) <= 1 {
-		log.Fatal("Missing Database in Redis D4 config: should be host:port/database_name")
+	// Dont't touch D4 server if Flushing
+	if !*flush {
+		// Parse Redis D4 Config
+		tmp := config.ReadConfigFile(*confdir, "redis_d4")
+		ss := strings.Split(string(tmp), "/")
+		if len(ss) <= 1 {
+			log.Fatal("Missing Database in Redis D4 config: should be host:port/database_name")
+		}
+		rd4.redisDB, _ = strconv.Atoi(ss[1])
+		var ret bool
+		ret, ss[0] = config.IsNet(ss[0])
+		if !ret {
+			sss := strings.Split(string(ss[0]), ":")
+			rd4.redisHost = sss[0]
+			rd4.redisPort = sss[1]
+		}
+		rd4.redisQueue = string(config.ReadConfigFile(*confdir, "redis_queue"))
+		// Connect to D4 Redis
+		// TODO use DialOptions to Dial with a timeout
+		redisD4, err = redis.Dial("tcp", rd4.redisHost+":"+rd4.redisPort, redis.DialDatabase(rd4.redisDB))
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer redisD4.Close()
 	}
-	rd4.redisDB, _ = strconv.Atoi(ss[1])
-	var ret bool
-	ret, ss[0] = config.IsNet(ss[0])
-	if !ret {
-		sss := strings.Split(string(ss[0]), ":")
-		rd4.redisHost = sss[0]
-		rd4.redisPort = sss[1]
-	}
-	rd4.redisQueue = string(config.ReadConfigFile(*confdir, "redis_queue"))
-	// Connect to D4 Redis
-	// TODO use DialOptions to Dial with a timeout
-	redisD4, err = redis.Dial("tcp", rd4.redisHost+":"+rd4.redisPort, redis.DialDatabase(rd4.redisDB))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer redisD4.Close()
 
 	// Parse Redis Parsers Config
-	tmp = config.ReadConfigFile(*confdir, "redis_parsers")
-	ss = strings.Split(string(tmp), "/")
+	tmp := config.ReadConfigFile(*confdir, "redis_parsers")
+	ss := strings.Split(string(tmp), "/")
 	if len(ss) <= 1 {
 		log.Fatal("Missing Database Count in Redis config: should be host:port/max number of DB")
 	}
 	rp.redisDBCount, _ = strconv.Atoi(ss[1])
+	var ret bool
 	ret, ss[0] = config.IsNet(ss[0])
 	if !ret {
 		sss := strings.Split(string(ss[0]), ":")
@@ -177,8 +182,16 @@ func main() {
 		log.Println("TODO should run specific parser here")
 	}
 
-	// Parsing loop
-	if *fromfile != "" {
+	// If we flush, we bypass the parsing loop
+	if *flush {
+		for _, v := range torun {
+			err := v.Flush()
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		// Parsing loop
+	} else if *fromfile != "" {
 		f, err = os.Open(*fromfile)
 		if err != nil {
 			log.Fatalf("Error opening seed file: %v", err)
