@@ -1,0 +1,74 @@
+{{ define "headertpl"}}
+<!DOCTYPE html>
+	<html>
+		<head>
+        
+			<meta charset="UTF-8">
+			<title>{{.Title}}</title>
+			<script>
+				var currentType = "statsusername";
+				var current = {{.CurrentTime}};
+			</script>
+			<script src="load.js"></script>
+			<style>
+			body {
+				background: white
+			}
+			#imageholder {
+				background: black;
+				margin: auto;
+				width: 50%;
+				padding: 10px;
+			}
+			span {
+				float: left;
+				clear: left;
+			}
+		  	</style>
+		</head>
+		<body onload="loadImage({{.Current}}, currentType)">
+{{end}}
+
+
+{{ define "footertpl"}}
+			<span>
+				<label for="statstype">Type: </label>
+				 <select selected="statsusername" onchange="currentType = this.value; loadImage(current.replace(/-/g, ''), currentType)">
+					<option value="statsusername">Usernames</option>
+					<option value="statssrc">Sources</option>
+					<option value="statshost">Hosts</option>
+			 	 </select> 
+			</span>
+			<div id="imageholder"></div>
+		</body>
+	</html>
+{{end}}
+
+{{ define "dailytpl"}}
+			<span>
+			<label for="statsday">Statistics for: </label>
+			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="current = this.value.replace(/-/g, ''); loadImage(current, currentType)"/>
+			</span>
+{{end}}
+
+{{ define "yearlytpl"}}
+		<span>
+            <select onchange="current = this.value; loadImage(current, currentType)">
+                {{range $val := .YearList}}
+                    <option value="{{$val}}">{{$val}}</option>
+                {{end}}
+            </select>                       
+        </span>
+{{end}}
+
+{{ define "monthlytpl"}}
+			<span>
+				<select onchange="current = this.value.replace(/-/g, ''); loadImage(current, currentType)">
+				{{range $key, $val := .MonthList}}
+					{{range $month := index $val}}
+   				  		<option value="{{$month}}">{{$month}}</option>
+					{{end}}
+				{{end}}
+				</select>
+			</span>
+{{end}}

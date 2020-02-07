@@ -3,6 +3,7 @@ package logparser
 import (
 	"fmt"
 	"html/template"
+	"io/ioutil"
 	"log"
 	"math"
 	"os"
@@ -303,73 +304,6 @@ func (s *SshdParser) Compile() error {
 		}
 	}
 
-	// Write html file for navigating plots
-	const tpl = `
-	<!DOCTYPE html>
-	<html>
-		<head>
-			<meta charset="UTF-8">
-			<title>{{.Title}}</title>
-			<script>
-				var currentType = "statsusername";
-				var currentDay = {{.MaxDate}};
-			</script>
-			<script src="load.js"></script>
-			<style>
-			body {
-				background: white
-			}
-			#imageholder {
-				background: black;
-				margin: auto;
-				width: 50%;
-				padding: 10px;
-			}
-			span {
-				float: left;
-				clear: left;
-			}
-		  	</style>
-		</head>
-		<body onload="loadImage({{.Current}}, currentType)">
-
-			<span>
-			<label for="statsday">Statistics for: </label>
-			<input id="statsday" type="date" value="{{.MaxDate}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentDay = this.value.replace(/-/g, ''); loadImage(currentDay, currentType)"/>
-			</span>
-
-			<span>
-				<select>
-				<option selected value>year</option>
-				{{range $val := .YearList}}
-   					<option value="{{$val}}">{{$val}}</option>
-				{{end}}
-				</select>			
-			</span>
-
-			<span>
-				<select>
-				<option selected value>month</option>
-				{{range $key, $val := .MonthList}}
-					{{range $month := index $val}}
-   				  		<option value="{{$month}}">{{$month}}</option>
-					{{end}}
-				{{end}}
-				</select>
-			</span>
-
-			<span>
-				<label for="statstype">Type: </label>
-				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentDay.replace(/-/g, ''), currentType)">
-					<option value="statsusername">Usernames</option>
-					<option value="statssrc">Sources</option>
-					<option value="statshost">Hosts</option>
-			 	 </select> 
-			</span>
-			<div id="imageholder"></div>
-		</body>
-	</html>`
-
 	// Get oldest / newest entries
 	var newest string
 	var oldest string
@@ -444,34 +378,114 @@ func (s *SshdParser) Compile() error {
 		}
 	}
 
-	t, err := template.New("webpage").Parse(tpl)
+	// Parse Template
+	t, err := template.ParseFiles(filepath.Join("logparser", "sshd", "statistics.gohtml"))
 	if err != nil {
 		r.Close()
 		return err
 	}
 
-	data := struct {
-		Title     string
-		Current   string
-		MinDate   string
-		MaxDate   string
-		YearList  []string
-		MonthList map[string][]string
+	daily := struct {
+		Title       string
+		Current     string
+		MinDate     string
+		MaxDate     string
+		CurrentTime string
 	}{
-		Title:     "sshd failed logins statistics",
-		MinDate:   parsedOldestStr,
-		MaxDate:   parsedNewestStr,
-		Current:   newest,
-		YearList:  years,
-		MonthList: months,
+		Title:       "sshd failed logins - daily statistics",
+		MinDate:     parsedOldestStr,
+		MaxDate:     parsedNewestStr,
+		Current:     newest,
+		CurrentTime: parsedNewestStr,
 	}
-	_ = os.Remove("statistics.html")
-	f, err := os.OpenFile("statistics.html", os.O_RDWR|os.O_CREATE, 0666)
+
+	monthly := struct {
+		Title       string
+		MonthList   map[string][]string
+		CurrentTime string
+		Current     string
+	}{
+		Title:       "sshd failed logins - monthly statistics",
+		MonthList:   months,
+		CurrentTime: years[0] + months[years[0]][0],
+		Current:     years[0] + months[years[0]][0],
+	}
+
+	yearly := struct {
+		Title       string
+		YearList    []string
+		Current     string
+		CurrentTime string
+	}{
+		Title:       "sshd failed logins - yearly statistics",
+		YearList:    years,
+		Current:     years[0],
+		CurrentTime: years[0],
+	}
+
+	// Create folder to store resulting files
+	if _, err := os.Stat("data"); os.IsNotExist(err) {
+		err := os.Mkdir("data", 0700)
+		if err != nil {
+			r.Close()
+			return err
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
+		if err != nil {
+			r.Close()
+			return err
+		}
+	}
+
+	_ = os.Remove(filepath.Join("data", "sshd", "dailystatistics.html"))
+	_ = os.Remove(filepath.Join("data", "sshd", "monthlystatistics.html"))
+	_ = os.Remove(filepath.Join("data", "sshd", "yearlystatistics.html"))
+
+	f, err := os.OpenFile(filepath.Join("data", "sshd", "dailystatistics.html"), os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
-	err = t.Execute(f, data)
+	// err = t.Execute(f, daily)
+	err = t.ExecuteTemplate(f, "headertpl", daily)
+	err = t.ExecuteTemplate(f, "dailytpl", daily)
+	err = t.ExecuteTemplate(f, "footertpl", daily)
 	if err != nil {
 		r.Close()
 		return err
+	}
+
+	f, err = os.OpenFile(filepath.Join("data", "sshd", "monthlystatistics.html"), os.O_RDWR|os.O_CREATE, 0666)
+	defer f.Close()
+	// err = t.Execute(f, monthly)
+	err = t.ExecuteTemplate(f, "headertpl", monthly)
+	err = t.ExecuteTemplate(f, "monthlytpl", monthly)
+	err = t.ExecuteTemplate(f, "footertpl", monthly)
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	f, err = os.OpenFile(filepath.Join("data", "sshd", "yearlystatistics.html"), os.O_RDWR|os.O_CREATE, 0666)
+	defer f.Close()
+	// err = t.Execute(f, yearly)
+	err = t.ExecuteTemplate(f, "headertpl", yearly)
+	err = t.ExecuteTemplate(f, "yearlytpl", yearly)
+	err = t.ExecuteTemplate(f, "footertpl", yearly)
+	if err != nil {
+		r.Close()
+		return err
+	}
+
+	// Copy js asset file
+	input, err := ioutil.ReadFile(filepath.Join("logparser", "sshd", "load.js"))
+	if err != nil {
+		log.Println(err)
+	}
+
+	err = ioutil.WriteFile(filepath.Join("data", "sshd", "load.js"), input, 0644)
+	if err != nil {
+		log.Println(err)
 	}
 
 	return nil

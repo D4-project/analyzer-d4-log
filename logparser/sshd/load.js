@@ -37,8 +37,7 @@ function loadImage(date, type) {
     console.log(type);
     // Get a reference to the body element, and create a new image object
     var holder = document.querySelector('#imageholder'),
-        myImage = new Image();
-  
+    myImage = new Image();
     myImage.crossOrigin = ""; // or "anonymous"
     
     // Call the function with the URL we want to load, but then chain the
