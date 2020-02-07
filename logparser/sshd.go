@@ -332,22 +332,39 @@ func (s *SshdParser) Compile() error {
 		  	</style>
 		</head>
 		<body onload="loadImage({{.Current}}, currentType)">
+
 			<span>
 			<label for="statsday">Statistics for: </label>
 			<input id="statsday" type="date" value="{{.MaxDate}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentDay = this.value.replace(/-/g, ''); loadImage(currentDay, currentType)"/>
-			<select>
-				{{range .YearList}}
-   				  <option value="{{.}}">{{.}}</option>
-				{{end}}
-			</select>
 			</span>
+
 			<span>
-			<label for="statstype">Type: </label>
-			 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentDay.replace(/-/g, ''), currentType)">
-				<option value="statsusername">Usernames</option>
-				<option value="statssrc">Sources</option>
-				<option value="statshost">Hosts</option>
-		 	 </select> 
+				<select>
+				<option selected value>year</option>
+				{{range $val := .YearList}}
+   					<option value="{{$val}}">{{$val}}</option>
+				{{end}}
+				</select>			
+			</span>
+
+			<span>
+				<select>
+				<option selected value>month</option>
+				{{range $key, $val := .MonthList}}
+					{{range $month := index $val}}
+   				  		<option value="{{$month}}">{{$month}}</option>
+					{{end}}
+				{{end}}
+				</select>
+			</span>
+
+			<span>
+				<label for="statstype">Type: </label>
+				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentDay.replace(/-/g, ''), currentType)">
+					<option value="statsusername">Usernames</option>
+					<option value="statssrc">Sources</option>
+					<option value="statshost">Hosts</option>
+			 	 </select> 
 			</span>
 			<div id="imageholder"></div>
 		</body>
@@ -448,6 +465,7 @@ func (s *SshdParser) Compile() error {
 		YearList:  years,
 		MonthList: months,
 	}
+	_ = os.Remove("statistics.html")
 	f, err := os.OpenFile("statistics.html", os.O_RDWR|os.O_CREATE, 0666)
 	defer f.Close()
 	err = t.Execute(f, data)
