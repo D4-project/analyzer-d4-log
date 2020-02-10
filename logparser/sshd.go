@@ -387,7 +387,6 @@ func (s *SshdParser) Compile() error {
 
 	daily := struct {
 		Title       string
-		Current     string
 		MinDate     string
 		MaxDate     string
 		CurrentTime string
@@ -395,7 +394,6 @@ func (s *SshdParser) Compile() error {
 		Title:       "sshd failed logins - daily statistics",
 		MinDate:     parsedOldestStr,
 		MaxDate:     parsedNewestStr,
-		Current:     newest,
 		CurrentTime: parsedNewestStr,
 	}
 
@@ -403,24 +401,20 @@ func (s *SshdParser) Compile() error {
 		Title       string
 		MonthList   map[string][]string
 		CurrentTime string
-		Current     string
 	}{
 		Title:       "sshd failed logins - monthly statistics",
 		MonthList:   months,
-		CurrentTime: years[0] + months[years[0]][0],
-		Current:     years[0] + months[years[0]][0],
+		CurrentTime: parsedNewestStr,
 	}
 
 	yearly := struct {
 		Title       string
 		YearList    []string
-		Current     string
 		CurrentTime string
 	}{
 		Title:       "sshd failed logins - yearly statistics",
 		YearList:    years,
-		Current:     years[0],
-		CurrentTime: years[0],
+		CurrentTime: parsedNewestStr,
 	}
 
 	// Create folder to store resulting files

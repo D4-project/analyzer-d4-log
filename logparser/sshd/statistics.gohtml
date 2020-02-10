@@ -7,7 +7,11 @@
 			<title>{{.Title}}</title>
 			<script>
 				var currentType = "statsusername";
-				var current = {{.CurrentTime}};
+				var currentTime = {{.CurrentTime}};
+				var strSplit = currentTime.split('-');
+				var currentYear = strSplit[0];
+				var currentMonth = strSplit[1];
+				var currentDay = strSplit[2];
 			</script>
 			<script src="load.js"></script>
 			<style>
@@ -26,14 +30,14 @@
 			}
 		  	</style>
 		</head>
-		<body onload="loadImage({{.Current}}, currentType)">
+		<body onload="loadImage(currentTime.replace(/-/g, ''), currentType)">
 {{end}}
 
 
 {{ define "footertpl"}}
 			<span>
 				<label for="statstype">Type: </label>
-				 <select selected="statsusername" onchange="currentType = this.value; loadImage(current.replace(/-/g, ''), currentType)">
+				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth+currentDay, currentType)">
 					<option value="statsusername">Usernames</option>
 					<option value="statssrc">Sources</option>
 					<option value="statshost">Hosts</option>
@@ -47,13 +51,13 @@
 {{ define "dailytpl"}}
 			<span>
 			<label for="statsday">Statistics for: </label>
-			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="current = this.value.replace(/-/g, ''); loadImage(current, currentType)"/>
+			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentTime = this.value.replace(/-/g, ''); loadImage(currentTime, currentType)"/>
 			</span>
 {{end}}
 
 {{ define "yearlytpl"}}
 		<span>
-            <select onchange="current = this.value; loadImage(current, currentType)">
+            <select onready="currentDay = ''; currentMonth = '';" onchange="currentYear = this.value; loadImage(currentYear, currentType)">
                 {{range $val := .YearList}}
                     <option value="{{$val}}">{{$val}}</option>
                 {{end}}
@@ -63,7 +67,7 @@
 
 {{ define "monthlytpl"}}
 			<span>
-				<select onchange="current = this.value.replace(/-/g, ''); loadImage(current, currentType)">
+				<select onready= "currentDay = '';"  onchange="currentMonth = this.value; loadImage(currentYear+currentMonth, currentType)">
 				{{range $key, $val := .MonthList}}
 					{{range $month := index $val}}
    				  		<option value="{{$month}}">{{$month}}</option>
@@ -71,4 +75,12 @@
 				{{end}}
 				</select>
 			</span>
+			<span>
+            <select onchange="currentYear = this.value; loadImage(currentYear+currentMonth, currentType)">
+				{{range $key, $val := .MonthList}}
+                    <option value="{{$key}}">{{$key}}</option>
+                {{end}}
+            </select>                       
+        </span>
 {{end}}
+''
