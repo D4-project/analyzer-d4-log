@@ -6,12 +6,18 @@
 			<meta charset="UTF-8">
 			<title>{{.Title}}</title>
 			<script>
+			
 				var currentType = "statsusername";
 				var currentTime = {{.CurrentTime}};
-				var strSplit = currentTime.split('-');
-				var currentYear = strSplit[0];
-				var currentMonth = strSplit[1];
-				var currentDay = strSplit[2];
+				var strSplit, currentYear, currentMonth, currentDay;
+				updateSplits(currentTime); 	
+				
+				function updateSplits(c){
+					strSplit = c.split('-');
+					currentYear = strSplit[0];
+					currentMonth = strSplit[1];
+					currentDay = strSplit[2];
+				}
 			</script>
 			<script src="load.js"></script>
 			<style>
@@ -30,11 +36,21 @@
 			}
 		  	</style>
 		</head>
-		<body onload="loadImage(currentTime.replace(/-/g, ''), currentType)">
 {{end}}
 
 
 {{ define "footertpl"}}
+			<div id="imageholder"></div>
+		</body>
+	</html>
+{{end}}
+
+{{ define "dailytpl"}}
+		<body onload="loadImage(currentYear+currentMonth+currentDay, currentType)">
+			<span>
+			<label for="statsday">Statistics for: </label>
+			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="updateSplits(this.value); loadImage(currentYear+currentMonth+currentDay, currentType)"/>
+			</span>
 			<span>
 				<label for="statstype">Type: </label>
 				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth+currentDay, currentType)">
@@ -43,31 +59,31 @@
 					<option value="statshost">Hosts</option>
 			 	 </select> 
 			</span>
-			<div id="imageholder"></div>
-		</body>
-	</html>
-{{end}}
-
-{{ define "dailytpl"}}
-			<span>
-			<label for="statsday">Statistics for: </label>
-			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="currentTime = this.value.replace(/-/g, ''); loadImage(currentTime, currentType)"/>
-			</span>
 {{end}}
 
 {{ define "yearlytpl"}}
+		<body onload="loadImage(currentYear, currentType)">
 		<span>
-            <select onready="currentDay = ''; currentMonth = '';" onchange="currentYear = this.value; loadImage(currentYear, currentType)">
+            <select onchange="currentYear = this.value; loadImage(currentYear, currentType)">
                 {{range $val := .YearList}}
                     <option value="{{$val}}">{{$val}}</option>
                 {{end}}
             </select>                       
         </span>
+		<span>
+				<label for="statstype">Type: </label>
+				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear, currentType)">
+					<option value="statsusername">Usernames</option>
+					<option value="statssrc">Sources</option>
+					<option value="statshost">Hosts</option>
+			 	 </select> 
+		</span>
 {{end}}
 
 {{ define "monthlytpl"}}
+		<body onload="loadImage(currentYear+currentMonth, currentType)">
 			<span>
-				<select onready= "currentDay = '';"  onchange="currentMonth = this.value; loadImage(currentYear+currentMonth, currentType)">
+				<select onchange="currentMonth = this.value; loadImage(currentYear+currentMonth, currentType)">
 				{{range $key, $val := .MonthList}}
 					{{range $month := index $val}}
    				  		<option value="{{$month}}">{{$month}}</option>
@@ -82,5 +98,13 @@
                 {{end}}
             </select>                       
         </span>
+		<span>
+				<label for="statstype">Type: </label>
+				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth, currentType)">
+					<option value="statsusername">Usernames</option>
+					<option value="statssrc">Sources</option>
+					<option value="statshost">Hosts</option>
+			 	 </select> 
+		</span>
 {{end}}
 ''
