@@ -21,18 +21,28 @@
 			</script>
 			<script src="load.js"></script>
 			<style>
+			
 			body {
-				background: white
+				display: grid;
+    			grid-template-columns: 75px 120px 1fr;
+    			grid-template-rows: 25px 25px auto;
+    			grid-gap: 5px;
 			}
-			#imageholder {
-				background: black;
-				margin: auto;
-				width: 50%;
-				padding: 10px;
+			label {
+				grid-column: 1;
 			}
-			span {
-				float: left;
-				clear: left;
+			select {
+				grid-column: 2;
+			}
+			input {
+				grid-column: 2;
+			}
+			div {
+				grid-column: 3;
+				grid-column-start: 3;
+				grid-column-end: 4;
+				grid-row-start: 1;
+				grid-row-end: 3;
 			}
 		  	</style>
 		</head>
@@ -47,64 +57,53 @@
 
 {{ define "dailytpl"}}
 		<body onload="loadImage(currentYear+currentMonth+currentDay, currentType)">
-			<span>
-			<label for="statsday">Statistics for: </label>
+			<label for="statsday">Day: </label>
 			<input id="statsday" type="date" value="{{.CurrentTime}}" min="{{.MinDate}}" max="{{.MaxDate}}" onchange="updateSplits(this.value); loadImage(currentYear+currentMonth+currentDay, currentType)"/>
-			</span>
-			<span>
-				<label for="statstype">Type: </label>
-				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth+currentDay, currentType)">
-					<option value="statsusername">Usernames</option>
-					<option value="statssrc">Sources</option>
-					<option value="statshost">Hosts</option>
-			 	 </select> 
-			</span>
+			<label for="statstype">Type: </label>
+			<select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth+currentDay, currentType)">
+				<option value="statsusername">Usernames</option>
+				<option value="statssrc">Sources</option>
+				<option value="statshost">Hosts</option>
+		 	</select> 
 {{end}}
 
 {{ define "yearlytpl"}}
 		<body onload="loadImage(currentYear, currentType)">
-		<span>
-            <select onchange="currentYear = this.value; loadImage(currentYear, currentType)">
-                {{range $val := .YearList}}
-                    <option value="{{$val}}">{{$val}}</option>
-                {{end}}
-            </select>                       
-        </span>
-		<span>
-				<label for="statstype">Type: </label>
-				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear, currentType)">
-					<option value="statsusername">Usernames</option>
-					<option value="statssrc">Sources</option>
-					<option value="statshost">Hosts</option>
-			 	 </select> 
-		</span>
+		<label>Year: </label>
+        <select onchange="currentYear = this.value; loadImage(currentYear, currentType)">
+            {{range $val := .YearList}}
+                <option value="{{$val}}">{{$val}}</option>
+            {{end}}
+        </select>                       
+		<label>Type: </label>
+		<select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear, currentType)">
+			<option value="statsusername">Usernames</option>
+			<option value="statssrc">Sources</option>
+			<option value="statshost">Hosts</option>
+	 	</select> 
 {{end}}
 
 {{ define "monthlytpl"}}
 		<body onload="loadImage(currentYear+currentMonth, currentType)">
-			<span>
-				<select onchange="currentMonth = this.value; loadImage(currentYear+currentMonth, currentType)">
-				{{range $key, $val := .MonthList}}
-					{{range $month := index $val}}
-   				  		<option value="{{$month}}">{{$month}}</option>
-					{{end}}
+		<label>Month: </label>
+		<select onchange="currentMonth = this.value; loadImage(currentYear+currentMonth, currentType)">
+			{{range $key, $val := .MonthList}}
+				{{range $month := index $val}}
+ 			  		<option value="{{$month}}">{{$month}}</option>
 				{{end}}
-				</select>
-			</span>
-			<span>
-            <select onchange="currentYear = this.value; loadImage(currentYear+currentMonth, currentType)">
-				{{range $key, $val := .MonthList}}
-                    <option value="{{$key}}">{{$key}}</option>
-                {{end}}
-            </select>                       
-        </span>
-		<span>
-				<label for="statstype">Type: </label>
-				 <select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth, currentType)">
-					<option value="statsusername">Usernames</option>
-					<option value="statssrc">Sources</option>
-					<option value="statshost">Hosts</option>
-			 	 </select> 
-		</span>
+			{{end}}
+		</select>
+		<label>Year: </label>
+        <select onchange="currentYear = this.value; loadImage(currentYear+currentMonth, currentType)">
+			{{range $key, $val := .MonthList}}
+                <option value="{{$key}}">{{$key}}</option>
+            {{end}}
+        </select>                       
+		<label for="statstype">Type: </label>
+		<select selected="statsusername" onchange="currentType = this.value; loadImage(currentYear+currentMonth, currentType)">
+			<option value="statsusername">Usernames</option>
+			<option value="statssrc">Sources</option>
+			<option value="statshost">Hosts</option>
+	 	</select> 
 {{end}}
 ''

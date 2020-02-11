@@ -535,7 +535,7 @@ func plotStats(s *SshdParser, v string) error {
 		return err
 	}
 	bc.LineStyle.Width = vg.Length(0)
-	bc.Color = plotutil.Color(0)
+	bc.Color = plotutil.Color(2)
 
 	p.Add(bc)
 	p.NominalY(keys...)
