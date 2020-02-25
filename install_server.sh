@@ -3,9 +3,8 @@
 set -e
 set -x
 
-sudo apt-get install screen -y
-
-go get github.com/D4-project/analyzer-d4-log
+sudo apt-get install screen golang -y
+go build
 
 # REDIS #
 mkdir -p db
