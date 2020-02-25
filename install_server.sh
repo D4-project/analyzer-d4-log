@@ -3,7 +3,11 @@
 set -e
 set -x
 
-sudo apt-get install screen golang -y
+# Go #
+sudo apt-get install screen -y
+sudo add-apt-repository ppa:longsleep/golang-backports -y
+sudo apt update
+sudo apt install golang-go -y
 go get -u
 go build
 
