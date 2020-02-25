@@ -3,6 +3,8 @@ github.com/D4-project/d4-golang-utils v0.0.0-20200108150548-740f16240125 h1:iv+h
 github.com/D4-project/d4-golang-utils v0.0.0-20200108150548-740f16240125/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
 github.com/D4-project/d4-golang-utils v0.0.0-20200212134721-0ef9aada6f2e h1:yYTt4RS3K8+L7PUnw7Y8sT4+YuE3Rny42rx8kMOgDmc=
 github.com/D4-project/d4-golang-utils v0.0.0-20200212134721-0ef9aada6f2e/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
+github.com/D4-project/d4-golang-utils v0.1.2 h1:aLdvwIR2CFvIn2FnqPjbHxzLeo3ZL7YEyhCXRL6a9kQ=
+github.com/D4-project/d4-golang-utils v0.1.2/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af h1:wVe6/Ea46ZMeNkQjjBW6xcqyQA/j5e0D6GytH95g0gQ=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af/go.mod h1:K08gAheRH3/J6wwsYMMT4xOr94bZjxIelGM0+d/wbFw=
 github.com/ajstarks/svgo v0.0.0-20200204031535-0cbcf57ea1d8 h1:LMjxfr9tcHP10YI+i4+cjHWSjPeUAUy5+sqw5FhFzwE=
