@@ -4,6 +4,7 @@ set -e
 set -x
 
 sudo apt-get install screen golang -y
+go get -u
 go build
 
 # REDIS #
