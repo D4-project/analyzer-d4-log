@@ -123,11 +123,14 @@ func main() {
 		rd4.redisDB, _ = strconv.Atoi(ss[1])
 		var ret bool
 		ret, ss[0] = config.IsNet(ss[0])
-		if !ret {
+		if ret {
 			sss := strings.Split(string(ss[0]), ":")
 			rd4.redisHost = sss[0]
 			rd4.redisPort = sss[1]
+		} else {
+			log.Fatal("Redis config error.")
 		}
+
 		rd4.redisQueue = string(config.ReadConfigFile(*confdir, "redis_queue"))
 		// Connect to D4 Redis
 		// TODO use DialOptions to Dial with a timeout
@@ -147,10 +150,12 @@ func main() {
 	rp.redisDBCount, _ = strconv.Atoi(ss[1])
 	var ret bool
 	ret, ss[0] = config.IsNet(ss[0])
-	if !ret {
+	if ret {
 		sss := strings.Split(string(ss[0]), ":")
 		rp.redisHost = sss[0]
 		rp.redisPort = sss[1]
+	} else {
+		log.Fatal("Redis config error.")
 	}
 
 	// Create a connection Pool
