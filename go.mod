@@ -9,5 +9,5 @@ require (
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	golang.org/x/image v0.0.0-20200119044424-58c23975cae1 // indirect
 	gonum.org/v1/netlib v0.0.0-20191229114700-bbb4dff026f8 // indirect
-	gonum.org/v1/plot v0.0.0-20200212202559-4d97eda4de95
+	gonum.org/v1/plot v0.7.0
 )

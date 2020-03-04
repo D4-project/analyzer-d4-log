@@ -235,7 +235,7 @@ func main() {
 				for _, v := range torun {
 					err := v.Parse(logline)
 					if err != nil {
-						log.Fatal(err)
+						log.Println(err)
 					}
 				}
 				nblines++

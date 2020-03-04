@@ -1,8 +1,4 @@
 github.com/BurntSushi/xgb v0.0.0-20160522181843-27f122750802/go.mod h1:IVnqGOEym/WlBOVXweHU+Q+/VP0lqqI8lqeDx9IjBqo=
-github.com/D4-project/d4-golang-utils v0.0.0-20200108150548-740f16240125 h1:iv+hcdT+M0XJIDEoCtvk9HVvI8PgvbQNBtbEfCczCRI=
-github.com/D4-project/d4-golang-utils v0.0.0-20200108150548-740f16240125/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
-github.com/D4-project/d4-golang-utils v0.0.0-20200212134721-0ef9aada6f2e h1:yYTt4RS3K8+L7PUnw7Y8sT4+YuE3Rny42rx8kMOgDmc=
-github.com/D4-project/d4-golang-utils v0.0.0-20200212134721-0ef9aada6f2e/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
 github.com/D4-project/d4-golang-utils v0.1.2 h1:aLdvwIR2CFvIn2FnqPjbHxzLeo3ZL7YEyhCXRL6a9kQ=
 github.com/D4-project/d4-golang-utils v0.1.2/go.mod h1:2rq8KBQnNNDocwc/49cnpaqoQA/komoSHKom7ynvqJc=
 github.com/ajstarks/svgo v0.0.0-20180226025133-644b8db467af h1:wVe6/Ea46ZMeNkQjjBW6xcqyQA/j5e0D6GytH95g0gQ=
@@ -60,10 +56,10 @@ gonum.org/v1/netlib v0.0.0-20190313105609-8cb42192e0e0/go.mod h1:wa6Ws7BG/ESfp6d
 gonum.org/v1/netlib v0.0.0-20191229114700-bbb4dff026f8 h1:kHY67jAKYewKUCz9YdNDa7iLAJ2WfNmoHzCCX4KnA8w=
 gonum.org/v1/netlib v0.0.0-20191229114700-bbb4dff026f8/go.mod h1:2IgXn/sJaRbePPBA1wRj8OE+QLvVaH0q8SK6TSTKlnk=
 gonum.org/v1/plot v0.0.0-20190515093506-e2840ee46a6b/go.mod h1:Wt8AAjI+ypCyYX3nZBvf6cAIx93T+c/OS2HFAYskSZc=
-gonum.org/v1/plot v0.0.0-20200111075622-4abb28f724d5 h1:edjGU2UC8RjriRJNETPkc6w4Y44FqlvPQEal6JdckTw=
-gonum.org/v1/plot v0.0.0-20200111075622-4abb28f724d5/go.mod h1:+HbaZVpsa73UwN7kXGCECULRHovLRJjH+t5cFPgxErs=
 gonum.org/v1/plot v0.0.0-20200212202559-4d97eda4de95 h1:dmUNA1pi2nVfGj2i7kijrI7bupgm2GFbJLYYu6C5bBY=
 gonum.org/v1/plot v0.0.0-20200212202559-4d97eda4de95/go.mod h1:+HbaZVpsa73UwN7kXGCECULRHovLRJjH+t5cFPgxErs=
+gonum.org/v1/plot v0.7.0 h1:Otpxyvra6Ie07ft50OX5BrCfS/BWEMvhsCUHwPEJmLI=
+gonum.org/v1/plot v0.7.0/go.mod h1:2wtU6YrrdQAhAF9+MTd5tOQjrov/zF70b1i99Npjvgo=
 modernc.org/cc v1.0.0/go.mod h1:1Sk4//wdnYJiUIxnW8ddKpaOJCF37yAdqYnkxUpaYxw=
 modernc.org/golex v1.0.0/go.mod h1:b/QX9oBD/LhixY6NDh+IdGv17hgB+51fET1i2kPSmvk=
 modernc.org/mathutil v1.0.0/go.mod h1:wU0vUrJsVWBZ4P6e7xtFJEhFSNsfRLJ8H458uRjg03k=

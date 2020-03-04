@@ -1,6 +1,7 @@
 package logparser
 
 import (
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -100,7 +101,11 @@ func (s *SshdParser) Parse(logline string) error {
 	r := *s.r1
 	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3} {1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
 	n1 := re.SubexpNames()
-	r2 := re.FindAllStringSubmatch(logline, -1)[0]
+	res := re.FindAllStringSubmatch(logline, -1)
+	if res == nil {
+		return errors.New("[sshd]: no match")
+	}
+	r2 := res[0]
 
 	// Build the group map for the line
 	md := map[string]string{}
