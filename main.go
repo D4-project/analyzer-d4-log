@@ -24,7 +24,7 @@ type (
 		redisDB    int
 		redisQueue string
 	}
-	redisconfParsers struct {
+	redisconfCompilers struct {
 		redisHost    string
 		redisPort    string
 		redisDBCount int
@@ -49,8 +49,8 @@ var (
 	retry              = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
 	flush              = flag.Bool("F", false, "Flush HTML output, recompile all statistic from redis logs, then quits")
 	redisD4            redis.Conn
-	redisParsers       *redis.Pool
-	parsers            = [1]string{"sshd"}
+	redisCompilers     *redis.Pool
+	compilers          = [1]string{"sshd"}
 	compilationTrigger = 20
 	wg                 sync.WaitGroup
 	compiling          comutex
@@ -80,8 +80,8 @@ func main() {
 	// Usage and flags
 	flag.Usage = func() {
 		fmt.Printf("analyzer-d4-log:\n\n")
-		fmt.Printf("  Generate statistics about logs collected through d4 in\n")
-		fmt.Printf("  HTML format. Optionally serves the results over HTTP.\n")
+		fmt.Printf("  Generate statistics about logs collected through d4 in HTML format.\n")
+		fmt.Printf("  Logs should be groked and served as escaped JSON.\n")
 		fmt.Printf("\n")
 		flag.PrintDefaults()
 		fmt.Printf("\n")
@@ -97,7 +97,7 @@ func main() {
 	// Config
 	// c := conf{}
 	rd4 := redisconfD4{}
-	rp := redisconfParsers{}
+	rp := redisconfCompilers{}
 	flag.Parse()
 	if flag.NFlag() == 0 || *confdir == "" {
 		flag.Usage()
@@ -141,8 +141,8 @@ func main() {
 		defer redisD4.Close()
 	}
 
-	// Parse Redis Parsers Config
-	tmp := config.ReadConfigFile(*confdir, "redis_parsers")
+	// Parse Redis Compilers Config
+	tmp := config.ReadConfigFile(*confdir, "redis_compilers")
 	ss := strings.Split(string(tmp), "/")
 	if len(ss) <= 1 {
 		log.Fatal("Missing Database Count in Redis config: should be host:port/max number of DB")
@@ -159,7 +159,7 @@ func main() {
 	}
 
 	// Create a connection Pool
-	redisParsers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
+	redisCompilers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
 
 	// Line counter to trigger HTML compilation
 	nblines := 0
@@ -167,14 +167,14 @@ func main() {
 	// Init parser depending on the parser flags:
 	if *all {
 		// Init all parsers
-		for _, v := range parsers {
+		for _, v := range compilers {
 			switch v {
 			case "sshd":
-				sshdrcon1, err := redisParsers.Dial()
+				sshdrcon1, err := redisCompilers.Dial()
 				if err != nil {
 					log.Fatal("Could not connect to Line one Redis")
 				}
-				sshdrcon2, err := redisParsers.Dial()
+				sshdrcon2, err := redisCompilers.Dial()
 				if err != nil {
 					log.Fatal("Could not connect to Line two Redis")
 				}
