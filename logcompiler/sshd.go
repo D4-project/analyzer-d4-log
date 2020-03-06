@@ -1,7 +1,7 @@
-package logparser
+package logcompiler
 
 import (
-	"errors"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -9,7 +9,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,26 +20,30 @@ import (
 	"gonum.org/v1/plot/vg"
 )
 
-// SshdParser Holds a struct that corresponds to a sshd log line
-// and the redis connection
-type SshdParser struct {
-	// Write
-	r1 *redis.Conn
-	// Read
-	r2 *redis.Conn
+// SSHDCompiler Holds a struct that corresponds to a sshd groked line
+// and the redis connections
+type SSHDCompiler struct {
+	CompilerStruct
 }
 
-// Set set the redic connection to this parser
-func (s *SshdParser) Set(rconn1 *redis.Conn, rconn2 *redis.Conn) {
-	s.r1 = rconn1
-	s.r2 = rconn2
+type groked struct {
+	SSHMessage      string `json:"ssh_message"`
+	SyslogPid       string `json:"syslog_pid"`
+	SyslogHostname  string `json:"syslog_hostname"`
+	SyslogTimestamp string `json:"syslog_timestamp"`
+	SshdClientIP    string `json:"sshd_client_ip"`
+	SyslogProgram   string `json:"syslog_program"`
+	SshdInvalidUser string `json:"sshd_invalid_user"`
 }
+
+var m groked
 
 // Flush recomputes statistics and recompile HTML output
-func (s *SshdParser) Flush() error {
+// TODO : review after refacto
+func (s *SSHDCompiler) Flush() error {
 	log.Println("Flushing")
 	r1 := *s.r1
-	r0 := *s.r2
+	r0 := *s.r0
 	// writing in database 1
 	if _, err := r1.Do("SELECT", 1); err != nil {
 		r0.Close()
@@ -96,54 +99,82 @@ func (s *SshdParser) Flush() error {
 	return nil
 }
 
-// Parse parses a line of sshd log
-func (s *SshdParser) Parse(logline string) error {
-	r := *s.r1
-	re := regexp.MustCompile(`^(?P<date>[[:alpha:]]{3} {1,2}\d{1,2}\s\d{2}:\d{2}:\d{2}) (?P<host>[^ ]+) sshd\[[[:alnum:]]+\]: Invalid user (?P<username>.*) from (?P<src>.*$)`)
-	n1 := re.SubexpNames()
-	res := re.FindAllStringSubmatch(logline, -1)
-	if res == nil {
-		return errors.New("[sshd]: no match")
+// Pull pulls a line of groked sshd logline from redis
+func (s *SSHDCompiler) Pull() error {
+	r1 := *s.r1
+	r2 := *s.r2
+
+	for {
+
+		// Reading from specified database on r2 - input
+		if _, err := r2.Do("SELECT", s.db); err != nil {
+			r2.Close()
+			return err
+		}
+
+		grokedline, err := redis.Bytes(r2.Do("LPOP", s.q))
+		fmt.Printf("%s\n", grokedline)
+
+		if err == redis.ErrNil {
+			// redis queue empty, let's sleep for a while
+			time.Sleep(s.retryPeriod)
+		} else if err != nil {
+			log.Fatal(err)
+		} else {
+
+			if err != nil {
+				r1.Close()
+				r2.Close()
+				log.Fatal(err)
+			}
+			// Compile statistics
+			err = json.Unmarshal([]byte(grokedline), &m)
+			if err != nil {
+				log.Println(err)
+			}
+			fmt.Printf("time: %s, hostname: %s, client_ip: %s, user: %s\n", m.SyslogTimestamp, m.SyslogHostname, m.SshdClientIP, m.SshdInvalidUser)
+
+			// Assumes the system parses logs recorded during the current year
+			m.SyslogTimestamp = fmt.Sprintf("%v %v", m.SyslogTimestamp, time.Now().Year())
+			// TODO Make this automatic or a config parameter
+			loc, _ := time.LoadLocation("Europe/Luxembourg")
+			parsedTime, _ := time.ParseInLocation("Jan 2 15:04:05 2006", m.SyslogTimestamp, loc)
+			m.SyslogTimestamp = string(strconv.FormatInt(parsedTime.Unix(), 10))
+
+			// Pushing loglines in database 0
+			if _, err := r1.Do("SELECT", 0); err != nil {
+				r1.Close()
+				return err
+			}
+
+			// Writing logs
+			_, err = redis.Bool(r1.Do("HSET", fmt.Sprintf("%v:%v", m.SyslogTimestamp, m.SyslogHostname), "username", m.SshdInvalidUser, "src", m.SshdClientIP))
+			if err != nil {
+				r1.Close()
+				return err
+			}
+
+			err = compileStats(s, parsedTime, m.SshdClientIP, m.SshdInvalidUser, m.SyslogHostname)
+			if err != nil {
+				r1.Close()
+				return err
+			}
+
+			// Compiler html / jsons
+			s.nbLines++
+			if s.nbLines > s.compilationTrigger {
+				s.nbLines = 0
+				//Non-blocking
+				if !s.compiling {
+					//s.(*)wg.Add(1)
+					go s.Compile()
+				}
+			}
+		}
 	}
-	r2 := res[0]
-
-	// Build the group map for the line
-	md := map[string]string{}
-	for i, n := range r2 {
-		// fmt.Printf("%d. match='%s'\tname='%s'\n", i, n, n1[i])
-		md[n1[i]] = n
-	}
-
-	// Assumes the system parses logs recorded during the current year
-	md["date"] = fmt.Sprintf("%v %v", md["date"], time.Now().Year())
-	// TODO Make this automatic or a config parameter
-	loc, _ := time.LoadLocation("Europe/Luxembourg")
-	parsedTime, _ := time.ParseInLocation("Jan  2 15:04:05 2006", md["date"], loc)
-	md["date"] = string(strconv.FormatInt(parsedTime.Unix(), 10))
-
-	// Pushing loglines in database 0
-	if _, err := r.Do("SELECT", 0); err != nil {
-		r.Close()
-		return err
-	}
-
-	// Writing logs
-	_, err := redis.Bool(r.Do("HSET", fmt.Sprintf("%v:%v", md["date"], md["host"]), "username", md["username"], "src", md["src"]))
-	if err != nil {
-		r.Close()
-		return err
-	}
-
-	err = compileStats(s, parsedTime, md["src"], md["username"], md["host"])
-	if err != nil {
-		r.Close()
-		return err
-	}
-
-	return nil
 }
 
-func compileStats(s *SshdParser, parsedTime time.Time, src string, username string, host string) error {
+func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username string, host string) error {
 	r := *s.r1
 
 	// Pushing statistics in database 1
@@ -214,7 +245,7 @@ func compileStats(s *SshdParser, parsedTime time.Time, src string, username stri
 	return nil
 }
 
-func compileStat(s *SshdParser, datestr string, mode string, src string, username string, host string) error {
+func compileStat(s *SSHDCompiler, datestr string, mode string, src string, username string, host string) error {
 	r := *s.r1
 	_, err := redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statssrc"), 1, src))
 	if err != nil {
@@ -252,8 +283,8 @@ func compileStat(s *SshdParser, datestr string, mode string, src string, usernam
 }
 
 // Compile create graphs of the results
-func (s *SshdParser) Compile() error {
-	r := *s.r2
+func (s *SSHDCompiler) Compile() error {
+	r := *s.r0
 
 	// Pulling statistics from database 1
 	if _, err := r.Do("SELECT", 1); err != nil {
@@ -490,8 +521,8 @@ func (s *SshdParser) Compile() error {
 	return nil
 }
 
-func plotStats(s *SshdParser, v string) error {
-	r := *s.r2
+func plotStats(s *SSHDCompiler, v string) error {
+	r := *s.r0
 	zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
 	if err != nil {
 		r.Close()
@@ -575,6 +606,8 @@ func plotStats(s *SshdParser, v string) error {
 		r.Close()
 		return err
 	}
+
+	// s.wg.Done()
 
 	return nil
 }

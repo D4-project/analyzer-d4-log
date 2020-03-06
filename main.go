@@ -12,17 +12,17 @@ import (
 	"sync"
 	"time"
 
-	"github.com/D4-project/analyzer-d4-log/logparser"
+	"github.com/D4-project/analyzer-d4-log/logcompiler"
 	config "github.com/D4-project/d4-golang-utils/config"
 	"github.com/gomodule/redigo/redis"
 )
 
 type (
-	redisconfD4 struct {
-		redisHost  string
-		redisPort  string
-		redisDB    int
-		redisQueue string
+	// Input is a grok - NIFI or Logstash
+	redisconfInput struct {
+		redisHost string
+		redisPort string
+		redisDB   int
 	}
 	redisconfCompilers struct {
 		redisHost    string
@@ -33,28 +33,27 @@ type (
 		httpHost string
 		httpPort string
 	}
-	comutex struct {
-		mu        sync.Mutex
-		compiling bool
-	}
 )
 
 // Setting up flags
 var (
-	confdir            = flag.String("c", "conf.sample", "configuration directory")
-	all                = flag.Bool("a", true, "run all parsers when set. Set by default")
-	specific           = flag.String("o", "", "run only a specific parser [sshd]")
-	debug              = flag.Bool("d", false, "debug info in logs")
-	fromfile           = flag.String("f", "", "parse from file on disk")
-	retry              = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
-	flush              = flag.Bool("F", false, "Flush HTML output, recompile all statistic from redis logs, then quits")
-	redisD4            redis.Conn
-	redisCompilers     *redis.Pool
+	// Flags
+	confdir  = flag.String("c", "conf.sample", "configuration directory")
+	all      = flag.Bool("a", true, "run all compilers when set. Set by default")
+	specific = flag.String("o", "", "run only a specific parser [sshd]")
+	debug    = flag.Bool("d", false, "debug info in logs")
+	fromfile = flag.String("f", "", "parse from file on disk")
+	retry    = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
+	flush    = flag.Bool("F", false, "Flush HTML output, recompile all statistic from redis logs, then quits")
+	// Pools of redis connections
+	redisCompilers *redis.Pool
+	redisInput     *redis.Pool
+	// Compilers
 	compilers          = [1]string{"sshd"}
 	compilationTrigger = 20
-	wg                 sync.WaitGroup
-	compiling          comutex
-	torun              = []logparser.Parser{}
+	torun              = []logcompiler.Compiler{}
+	// Routine handling
+	wg sync.WaitGroup
 )
 
 func main() {
@@ -64,6 +63,8 @@ func main() {
 	go func() {
 		<-sortie
 		fmt.Println("Exiting.")
+		// TODO: handle the pulling routine
+		// wg.Wait()
 		log.Println("Exit")
 		os.Exit(0)
 	}()
@@ -89,14 +90,14 @@ func main() {
 		fmt.Printf("to specify the settings to use:\n\n")
 		fmt.Printf(" mandatory: redis_d4 - host:port/db\n")
 		fmt.Printf(" mandatory: redis_queue - uuid\n")
-		fmt.Printf(" mandatory: redis_parsers - host:port/maxdb\n")
+		fmt.Printf(" mandatory: redis_compilers - host:port/maxdb\n")
 		fmt.Printf(" optional: http_server - host:port\n\n")
 		fmt.Printf("See conf.sample for an example.\n")
 	}
 
 	// Config
 	// c := conf{}
-	rd4 := redisconfD4{}
+	ri := redisconfInput{}
 	rp := redisconfCompilers{}
 	flag.Parse()
 	if flag.NFlag() == 0 || *confdir == "" {
@@ -112,33 +113,24 @@ func main() {
 		log.SetFlags(log.LstdFlags | log.Lshortfile)
 	}
 
-	// Dont't touch D4 server if Flushing
+	// Dont't touch input server if Flushing
 	if !*flush {
-		// Parse Redis D4 Config
-		tmp := config.ReadConfigFile(*confdir, "redis_d4")
+		// Parse Input Redis Config
+		tmp := config.ReadConfigFile(*confdir, "redis_input")
 		ss := strings.Split(string(tmp), "/")
 		if len(ss) <= 1 {
-			log.Fatal("Missing Database in Redis D4 config: should be host:port/database_name")
+			log.Fatal("Missing Database in Redis input config: should be host:port/database_name")
 		}
-		rd4.redisDB, _ = strconv.Atoi(ss[1])
+		ri.redisDB, _ = strconv.Atoi(ss[1])
 		var ret bool
 		ret, ss[0] = config.IsNet(ss[0])
 		if ret {
 			sss := strings.Split(string(ss[0]), ":")
-			rd4.redisHost = sss[0]
-			rd4.redisPort = sss[1]
+			ri.redisHost = sss[0]
+			ri.redisPort = sss[1]
 		} else {
 			log.Fatal("Redis config error.")
 		}
-
-		rd4.redisQueue = string(config.ReadConfigFile(*confdir, "redis_queue"))
-		// Connect to D4 Redis
-		// TODO use DialOptions to Dial with a timeout
-		redisD4, err = redis.Dial("tcp", rd4.redisHost+":"+rd4.redisPort, redis.DialDatabase(rd4.redisDB))
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer redisD4.Close()
 	}
 
 	// Parse Redis Compilers Config
@@ -158,45 +150,48 @@ func main() {
 		log.Fatal("Redis config error.")
 	}
 
-	// Create a connection Pool
+	// Create a connection Pool for output Redis
 	redisCompilers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
+	redisInput = newPool(ri.redisHost+":"+ri.redisPort, 16)
 
-	// Line counter to trigger HTML compilation
-	nblines := 0
-
-	// Init parser depending on the parser flags:
+	// Init compiler depending on the compiler flags:
 	if *all {
-		// Init all parsers
+		// Init all compilers
 		for _, v := range compilers {
 			switch v {
 			case "sshd":
+				sshdrcon0, err := redisCompilers.Dial()
+				if err != nil {
+					log.Fatal("Could not connect to input line on Compiler Redis")
+				}
 				sshdrcon1, err := redisCompilers.Dial()
 				if err != nil {
-					log.Fatal("Could not connect to Line one Redis")
+					log.Fatal("Could not connect to output line on Compiler Redis")
 				}
-				sshdrcon2, err := redisCompilers.Dial()
+				sshdrcon2, err := redisInput.Dial()
 				if err != nil {
-					log.Fatal("Could not connect to Line two Redis")
+					log.Fatal("Could not connect to output line on Input Redis")
 				}
-				sshd := logparser.SshdParser{}
-				sshd.Set(&sshdrcon1, &sshdrcon2)
+				sshd := logcompiler.SSHDCompiler{}
+				sshd.Set(&wg, &sshdrcon0, &sshdrcon1, &sshdrcon2, ri.redisDB, "sshd", compilationTrigger, *retry)
 				torun = append(torun, &sshd)
 			}
 		}
 	} else if *specific != "" {
-		log.Println("TODO should run specific parser here")
+		log.Println("TODO should run specific compiler here")
 	}
 
-	// If we flush, we bypass the parsing loop
+	// If we flush, we bypass the compiling loop
 	if *flush {
 		for _, v := range torun {
 			err := v.Flush()
 			if err != nil {
 				log.Fatal(err)
 			}
-			compile()
+			// TODO
+			// compile()
 		}
-		// Parsing loop
+		// TODO update that -- deprecated
 	} else if *fromfile != "" {
 		f, err = os.Open(*fromfile)
 		if err != nil {
@@ -205,48 +200,27 @@ func main() {
 		defer f.Close()
 		scanner := bufio.NewScanner(f)
 		for scanner.Scan() {
-			logline := scanner.Text()
-			for _, v := range torun {
-				err := v.Parse(logline)
-				if err != nil {
-					log.Fatal(err)
-				}
-			}
-			nblines++
-			if nblines > compilationTrigger {
-				nblines = 0
-				// Non-blocking
-				if !compiling.compiling {
-					go compile()
-				}
-			}
+			// logline := scanner.Text()
+			// for _, v := range torun {
+			// err := v.Pull(logline)
+			// if err != nil {
+			// log.Fatal(err)
+			// }
+			// }
+			// nblines++
+			// if nblines > compilationTrigger {
+			// nblines = 0
+			// Non-blocking
+			// if !compiling.compiling {
+			// go compile()
+			// }
+			// }
 		}
 	} else {
-		// Pop D4 redis queue
-		for {
-			logline, err := redis.String(redisD4.Do("LPOP", "analyzer:3:"+rd4.redisQueue))
-			if err == redis.ErrNil {
-				// redis queue empty, let's sleep for a while
-				time.Sleep(time.Duration(*retry) * time.Minute)
-			} else if err != nil {
-				log.Fatal(err)
-				// let's parse
-			} else {
-				for _, v := range torun {
-					err := v.Parse(logline)
-					if err != nil {
-						log.Println(err)
-					}
-				}
-				nblines++
-				if nblines > compilationTrigger {
-					nblines = 0
-					// Non-blocking
-					if !compiling.compiling {
-						go compile()
-					}
-				}
-			}
+		// Launching Pull routines
+		for _, v := range torun {
+			wg.Add(1)
+			go v.Pull()
 		}
 	}
 
@@ -254,25 +228,27 @@ func main() {
 	log.Println("Exit")
 }
 
-func compile() {
-	compiling.mu.Lock()
-	compiling.compiling = true
-	wg.Add(1)
+// TODO: move into compilers
 
-	log.Println("Compiling")
+// func compile() {
+// 	compiling.mu.Lock()
+// 	compiling.compiling = true
+// 	wg.Add(1)
 
-	for _, v := range torun {
-		err := v.Compile()
-		if err != nil {
-			log.Fatal(err)
-		}
-	}
+// 	log.Println("Compiling")
 
-	log.Println("Done")
-	compiling.compiling = false
-	compiling.mu.Unlock()
-	wg.Done()
-}
+// 	for _, v := range torun {
+// 		err := v.Compile()
+// 		if err != nil {
+// 			log.Fatal(err)
+// 		}
+// 	}
+
+// 	log.Println("Done")
+// 	compiling.compiling = false
+// 	compiling.mu.Unlock()
+// 	wg.Done()
+// }
 
 func newPool(addr string, maxconn int) *redis.Pool {
 	return &redis.Pool{
