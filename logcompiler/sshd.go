@@ -26,7 +26,8 @@ type SSHDCompiler struct {
 	CompilerStruct
 }
 
-type groked struct {
+// GrokedSSHD map JSON fields to Go struct
+type GrokedSSHD struct {
 	SSHMessage      string `json:"ssh_message"`
 	SyslogPid       string `json:"syslog_pid"`
 	SyslogHostname  string `json:"syslog_hostname"`
@@ -36,7 +37,7 @@ type groked struct {
 	SshdInvalidUser string `json:"sshd_invalid_user"`
 }
 
-var m groked
+var m GrokedSSHD
 
 // Flush recomputes statistics and recompile HTML output
 // TODO : review after refacto

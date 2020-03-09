@@ -1,0 +1,4 @@
+{"ssh_message":"Invalid user misp-project from 119.42.175.200","syslog_pid":"28367","syslog_hostname":"sigmund","syslog_timestamp":"Feb 27 06:52:08","sshd_client_ip":"119.42.175.200","syslog_program":"sshd","sshd_invalid_user":"misp-project"}
+{"ssh_message":"Invalid user oracle from 49.212.211.207","syslog_pid":"28372","syslog_hostname":"sigmund","syslog_timestamp":"Feb 27 06:53:15","sshd_client_ip":"49.212.211.207","syslog_program":"sshd","sshd_invalid_user":"oracle"}
+{"ssh_message":"Invalid user 2019 from 112.78.1.247","syslog_pid":"28381","syslog_hostname":"sigmund","syslog_timestamp":"Feb 27 06:53:57","sshd_client_ip":"112.78.1.247","syslog_program":"sshd","sshd_invalid_user":"2019"}
+{"ssh_message":"Invalid user postgres from 217.182.194.95","syslog_pid":"28435","syslog_hostname":"sigmund","syslog_timestamp":"Feb 27 06:58:11","sshd_client_ip":"217.182.194.95","syslog_program":"sshd","sshd_invalid_user":"postgres"}
