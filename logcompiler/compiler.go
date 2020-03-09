@@ -14,7 +14,7 @@ type (
 	//  Parse to parse a line of log
 	//  Flush recomputes statisitcs and recompile output
 	Compiler interface {
-		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, *redis.Conn, int, string, int, int)
+		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, *redis.Conn, int, string, int, int, *sync.WaitGroup)
 		Pull() error
 		Flush() error
 		Compile() error
@@ -38,9 +38,9 @@ type (
 		compilationTrigger int
 		// Current line processed
 		nbLines int
-		// Global WaitGroup to handle exiting
-		wg *sync.WaitGroup
-		// comutex embedding
+		// Global WaitGroup to handle graceful exiting a compilation routines
+		compilegr *sync.WaitGroup
+		// Comutex embedding
 		comutex
 	}
 
@@ -51,7 +51,7 @@ type (
 )
 
 // Set set the redis connections to this compiler
-func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, rconn2 *redis.Conn, db int, queue string, ct int, rt int) {
+func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, rconn2 *redis.Conn, db int, queue string, ct int, rt int, compilegr *sync.WaitGroup) {
 	s.r0 = rconn0
 	s.r1 = rconn1
 	s.r2 = rconn2
@@ -60,4 +60,5 @@ func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *red
 	s.compilationTrigger = ct
 	s.retryPeriod = time.Duration(rt) * time.Minute
 	s.compiling = false
+	s.compilegr = compilegr
 }

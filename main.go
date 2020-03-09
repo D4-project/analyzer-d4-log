@@ -53,7 +53,8 @@ var (
 	compilationTrigger = 20
 	torun              = []logcompiler.Compiler{}
 	// Routine handling
-	wg sync.WaitGroup
+	pullgr    sync.WaitGroup
+	compilegr sync.WaitGroup
 )
 
 func main() {
@@ -63,8 +64,7 @@ func main() {
 	go func() {
 		<-sortie
 		fmt.Println("Exiting.")
-		// TODO: handle the pulling routine
-		// wg.Wait()
+		compilegr.Wait()
 		log.Println("Exit")
 		os.Exit(0)
 	}()
@@ -164,16 +164,19 @@ func main() {
 				if err != nil {
 					log.Fatal("Could not connect to input line on Compiler Redis")
 				}
+				defer sshdrcon0.Close()
 				sshdrcon1, err := redisCompilers.Dial()
 				if err != nil {
 					log.Fatal("Could not connect to output line on Compiler Redis")
 				}
+				defer sshdrcon1.Close()
 				sshdrcon2, err := redisInput.Dial()
 				if err != nil {
 					log.Fatal("Could not connect to output line on Input Redis")
 				}
+				defer sshdrcon2.Close()
 				sshd := logcompiler.SSHDCompiler{}
-				sshd.Set(&wg, &sshdrcon0, &sshdrcon1, &sshdrcon2, ri.redisDB, "sshd", compilationTrigger, *retry)
+				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, &sshdrcon2, ri.redisDB, "sshd", compilationTrigger, *retry, &compilegr)
 				torun = append(torun, &sshd)
 			}
 		}
@@ -219,36 +222,16 @@ func main() {
 	} else {
 		// Launching Pull routines
 		for _, v := range torun {
-			wg.Add(1)
+			// we add pulling routines to a waitgroup,
+			// they can immediately die when exiting.
+			pullgr.Add(1)
 			go v.Pull()
 		}
 	}
 
-	wg.Wait()
+	pullgr.Wait()
 	log.Println("Exit")
 }
-
-// TODO: move into compilers
-
-// func compile() {
-// 	compiling.mu.Lock()
-// 	compiling.compiling = true
-// 	wg.Add(1)
-
-// 	log.Println("Compiling")
-
-// 	for _, v := range torun {
-// 		err := v.Compile()
-// 		if err != nil {
-// 			log.Fatal(err)
-// 		}
-// 	}
-
-// 	log.Println("Done")
-// 	compiling.compiling = false
-// 	compiling.mu.Unlock()
-// 	wg.Done()
-// }
 
 func newPool(addr string, maxconn int) *redis.Pool {
 	return &redis.Pool{

@@ -166,7 +166,6 @@ func (s *SSHDCompiler) Pull() error {
 				s.nbLines = 0
 				//Non-blocking
 				if !s.compiling {
-					//s.(*)wg.Add(1)
 					go s.Compile()
 				}
 			}
@@ -284,6 +283,10 @@ func compileStat(s *SSHDCompiler, datestr string, mode string, src string, usern
 
 // Compile create graphs of the results
 func (s *SSHDCompiler) Compile() error {
+	s.mu.Lock()
+	s.compiling = true
+	s.compilegr.Add(1)
+	log.Println("[+] SSHD compiling")
 	r := *s.r0
 
 	// Pulling statistics from database 1
@@ -415,9 +418,10 @@ func (s *SSHDCompiler) Compile() error {
 	}
 
 	// Parse Template
-	t, err := template.ParseFiles(filepath.Join("logparser", "sshd", "statistics.gohtml"))
+	t, err := template.ParseFiles(filepath.Join("logcompiler", "sshd", "statistics.gohtml"))
 	if err != nil {
 		r.Close()
+		log.Println(err)
 		return err
 	}
 
@@ -508,7 +512,7 @@ func (s *SSHDCompiler) Compile() error {
 	}
 
 	// Copy js asset file
-	input, err := ioutil.ReadFile(filepath.Join("logparser", "sshd", "load.js"))
+	input, err := ioutil.ReadFile(filepath.Join("logcompiler", "sshd", "load.js"))
 	if err != nil {
 		log.Println(err)
 	}
@@ -517,6 +521,12 @@ func (s *SSHDCompiler) Compile() error {
 	if err != nil {
 		log.Println(err)
 	}
+
+	log.Println("[-] SSHD compiling finished.")
+	s.compiling = false
+	s.mu.Unlock()
+	// Tell main program we can exit if needed now
+	s.compilegr.Done()
 
 	return nil
 }
@@ -606,8 +616,6 @@ func plotStats(s *SSHDCompiler, v string) error {
 		r.Close()
 		return err
 	}
-
-	// s.wg.Done()
 
 	return nil
 }
