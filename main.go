@@ -192,34 +192,28 @@ func main() {
 			if err != nil {
 				log.Fatal(err)
 			}
-			// TODO
-			// compile()
+			log.Println("Exit")
+			os.Exit(0)
 		}
-		// TODO update that -- deprecated
-	} else if *fromfile != "" {
-		f, err = os.Open(*fromfile)
-		if err != nil {
-			log.Fatalf("Error opening seed file: %v", err)
+	}
+
+	// Launching Pull routines
+	for _, v := range torun {
+
+		// If we read from a file, we set the reader to os.open
+		if *fromfile != "" {
+			f, err = os.Open(*fromfile)
+			if err != nil {
+				log.Fatalf("Error opening seed file: %v", err)
+			}
+			defer f.Close()
+			v.SetReader(f)
 		}
-		defer f.Close()
-		// scanner := bufio.NewScanner(f)
-		// for scanner.Scan() {
-		// logline := scanner.Bytes()
-		// for _, v := range torun {
-		// 	go v.Pull()
-		// 	if err != nil {
-		// 		log.Fatal(err)
-		// 	}
-		// }
-		// }
-	} else {
-		// Launching Pull routines
-		for _, v := range torun {
-			// we add pulling routines to a waitgroup,
-			// they can immediately die when exiting.
-			pullgr.Add(1)
-			go v.Pull()
-		}
+
+		// we add pulling routines to a waitgroup,
+		// they can immediately die when exiting.
+		pullgr.Add(1)
+		go v.Pull()
 	}
 
 	pullgr.Wait()

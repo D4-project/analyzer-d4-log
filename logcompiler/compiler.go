@@ -15,6 +15,7 @@ type (
 	//  Flush recomputes statisitcs and recompile output
 	Compiler interface {
 		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup)
+		SetReader(io.Reader)
 		Pull() error
 		Flush() error
 		Compile() error
@@ -53,4 +54,9 @@ func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *red
 	s.compilationTrigger = ct
 	s.compiling = false
 	s.compilegr = compilegr
+}
+
+// SetReader Changes compiler's input
+func (s *CompilerStruct) SetReader(reader io.Reader) {
+	s.reader = reader
 }
