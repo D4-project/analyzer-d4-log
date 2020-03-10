@@ -37,8 +37,6 @@ type GrokedSSHD struct {
 	SshdInvalidUser string `json:"sshd_invalid_user"`
 }
 
-var m GrokedSSHD
-
 // Flush recomputes statistics and recompile HTML output
 // TODO : review after refacto
 func (s *SSHDCompiler) Flush() error {
@@ -103,75 +101,54 @@ func (s *SSHDCompiler) Flush() error {
 // Pull pulls a line of groked sshd logline from redis
 func (s *SSHDCompiler) Pull() error {
 	r1 := *s.r1
-	r2 := *s.r2
 
-	for {
+	jsoner := json.NewDecoder(s.reader)
 
-		// Reading from specified database on r2 - input
-		if _, err := r2.Do("SELECT", s.db); err != nil {
-			r2.Close()
+	for jsoner.More() {
+		var m GrokedSSHD
+		err := jsoner.Decode(&m)
+		if err != nil {
+			log.Println(err)
+		}
+		fmt.Printf("time: %s, hostname: %s, client_ip: %s, user: %s\n", m.SyslogTimestamp, m.SyslogHostname, m.SshdClientIP, m.SshdInvalidUser)
+
+		// Assumes the system parses logs recorded during the current year
+		m.SyslogTimestamp = fmt.Sprintf("%v %v", m.SyslogTimestamp, time.Now().Year())
+		// TODO Make this automatic or a config parameter
+		loc, _ := time.LoadLocation("Europe/Luxembourg")
+		parsedTime, _ := time.ParseInLocation("Jan 2 15:04:05 2006", m.SyslogTimestamp, loc)
+		m.SyslogTimestamp = string(strconv.FormatInt(parsedTime.Unix(), 10))
+
+		// Pushing loglines in database 0
+		if _, err := r1.Do("SELECT", 0); err != nil {
+			r1.Close()
 			return err
 		}
 
-		grokedline, err := redis.Bytes(r2.Do("LPOP", s.q))
-		fmt.Printf("%s\n", grokedline)
+		// Writing logs
+		_, err = redis.Bool(r1.Do("HSET", fmt.Sprintf("%v:%v", m.SyslogTimestamp, m.SyslogHostname), "username", m.SshdInvalidUser, "src", m.SshdClientIP))
+		if err != nil {
+			r1.Close()
+			return err
+		}
 
-		if err == redis.ErrNil {
-			// redis queue empty, let's sleep for a while
-			time.Sleep(s.retryPeriod)
-		} else if err != nil {
-			log.Fatal(err)
-		} else {
+		err = compileStats(s, parsedTime, m.SshdClientIP, m.SshdInvalidUser, m.SyslogHostname)
+		if err != nil {
+			r1.Close()
+			return err
+		}
 
-			if err != nil {
-				r1.Close()
-				r2.Close()
-				log.Fatal(err)
-			}
-			// Compile statistics
-			err = json.Unmarshal([]byte(grokedline), &m)
-			if err != nil {
-				log.Println(err)
-			}
-			fmt.Printf("time: %s, hostname: %s, client_ip: %s, user: %s\n", m.SyslogTimestamp, m.SyslogHostname, m.SshdClientIP, m.SshdInvalidUser)
-
-			// Assumes the system parses logs recorded during the current year
-			m.SyslogTimestamp = fmt.Sprintf("%v %v", m.SyslogTimestamp, time.Now().Year())
-			// TODO Make this automatic or a config parameter
-			loc, _ := time.LoadLocation("Europe/Luxembourg")
-			parsedTime, _ := time.ParseInLocation("Jan 2 15:04:05 2006", m.SyslogTimestamp, loc)
-			m.SyslogTimestamp = string(strconv.FormatInt(parsedTime.Unix(), 10))
-
-			// Pushing loglines in database 0
-			if _, err := r1.Do("SELECT", 0); err != nil {
-				r1.Close()
-				return err
-			}
-
-			// Writing logs
-			_, err = redis.Bool(r1.Do("HSET", fmt.Sprintf("%v:%v", m.SyslogTimestamp, m.SyslogHostname), "username", m.SshdInvalidUser, "src", m.SshdClientIP))
-			if err != nil {
-				r1.Close()
-				return err
-			}
-
-			err = compileStats(s, parsedTime, m.SshdClientIP, m.SshdInvalidUser, m.SyslogHostname)
-			if err != nil {
-				r1.Close()
-				return err
-			}
-
-			// Compiler html / jsons
-			s.nbLines++
-			if s.nbLines > s.compilationTrigger {
-				s.nbLines = 0
-				//Non-blocking
-				if !s.compiling {
-					go s.Compile()
-				}
+		// Compiler html / jsons
+		s.nbLines++
+		if s.nbLines > s.compilationTrigger {
+			s.nbLines = 0
+			//Non-blocking
+			if !s.compiling {
+				go s.Compile()
 			}
 		}
 	}
+	return nil
 }
 
 func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username string, host string) error {

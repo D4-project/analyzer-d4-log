@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/D4-project/analyzer-d4-log/inputreader"
 	"github.com/D4-project/analyzer-d4-log/logcompiler"
 	config "github.com/D4-project/d4-golang-utils/config"
 	"github.com/gomodule/redigo/redis"
@@ -175,8 +175,9 @@ func main() {
 					log.Fatal("Could not connect to output line on Input Redis")
 				}
 				defer sshdrcon2.Close()
+				redisReader := inputreader.NewLPOPReader(&sshdrcon2, ri.redisDB, "sshd", *retry)
 				sshd := logcompiler.SSHDCompiler{}
-				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, &sshdrcon2, ri.redisDB, "sshd", compilationTrigger, *retry, &compilegr)
+				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, redisReader, compilationTrigger, &compilegr)
 				torun = append(torun, &sshd)
 			}
 		}
@@ -201,24 +202,16 @@ func main() {
 			log.Fatalf("Error opening seed file: %v", err)
 		}
 		defer f.Close()
-		scanner := bufio.NewScanner(f)
-		for scanner.Scan() {
-			// logline := scanner.Text()
-			// for _, v := range torun {
-			// err := v.Pull(logline)
-			// if err != nil {
-			// log.Fatal(err)
-			// }
-			// }
-			// nblines++
-			// if nblines > compilationTrigger {
-			// nblines = 0
-			// Non-blocking
-			// if !compiling.compiling {
-			// go compile()
-			// }
-			// }
-		}
+		// scanner := bufio.NewScanner(f)
+		// for scanner.Scan() {
+		// logline := scanner.Bytes()
+		// for _, v := range torun {
+		// 	go v.Pull()
+		// 	if err != nil {
+		// 		log.Fatal(err)
+		// 	}
+		// }
+		// }
 	} else {
 		// Launching Pull routines
 		for _, v := range torun {
