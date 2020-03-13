@@ -154,6 +154,18 @@ func main() {
 	redisCompilers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
 	redisInput = newPool(ri.redisHost+":"+ri.redisPort, 16)
 
+	// Create a chan to get the goroutines errors messages
+	pullreturn := make(chan error, 1)
+	// Launching Pull routines monitoring
+	go func() {
+		select {
+		case err := <-pullreturn:
+			log.Println(err)
+			os.Exit(1)
+			log.Println("Exit.")
+		}
+	}()
+
 	// Init compiler depending on the compiler flags:
 	if *all {
 		// Init all compilers
@@ -177,7 +189,7 @@ func main() {
 				defer sshdrcon2.Close()
 				redisReader := inputreader.NewLPOPReader(&sshdrcon2, ri.redisDB, "sshd", *retry)
 				sshd := logcompiler.SSHDCompiler{}
-				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, redisReader, compilationTrigger, &compilegr)
+				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, redisReader, compilationTrigger, &compilegr, &pullreturn)
 				torun = append(torun, &sshd)
 			}
 		}
@@ -213,7 +225,7 @@ func main() {
 		// we add pulling routines to a waitgroup,
 		// they can immediately die when exiting.
 		pullgr.Add(1)
-		go v.Pull()
+		go v.Pull(pullreturn)
 	}
 
 	pullgr.Wait()

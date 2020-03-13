@@ -4,6 +4,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/D4-project/analyzer-d4-log/inputreader"
 	"github.com/gomodule/redigo/redis"
 )
 
@@ -14,11 +15,10 @@ type (
 	//  Parse to parse a line of log
 	//  Flush recomputes statisitcs and recompile output
 	Compiler interface {
-		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup)
+		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup, *chan error)
 		SetReader(io.Reader)
-		Pull() error
+		Pull(chan error)
 		Flush() error
-		Compile() error
 	}
 
 	// CompilerStruct will implements Compiler, and should be embedded in
@@ -36,6 +36,8 @@ type (
 		nbLines int
 		// Global WaitGroup to handle graceful exiting a compilation routines
 		compilegr *sync.WaitGroup
+		// Goroutines error channel
+		pullreturn *chan error
 		// Comutex embedding
 		comutex
 	}
@@ -47,16 +49,32 @@ type (
 )
 
 // Set set the redis connections to this compiler
-func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, reader io.Reader, ct int, compilegr *sync.WaitGroup) {
+func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, reader io.Reader, ct int, compilegr *sync.WaitGroup, c *chan error) {
 	s.r0 = rconn0
 	s.r1 = rconn1
 	s.reader = reader
 	s.compilationTrigger = ct
 	s.compiling = false
 	s.compilegr = compilegr
+	s.pullreturn = c
 }
 
 // SetReader Changes compiler's input
 func (s *CompilerStruct) SetReader(reader io.Reader) {
 	s.reader = reader
+}
+
+// tear down is called on error to close redis connections
+// and log errors
+func (s *CompilerStruct) teardown(err error) {
+	*s.pullreturn <- err
+	(*s.r0).Close()
+	(*s.r1).Close()
+
+	// If the reader is a LPOPReader, we need to teardown the connection
+	switch s.reader.(type) {
+	case *inputreader.RedisLPOPReader:
+		tmp := *s.reader.(*inputreader.RedisLPOPReader)
+		tmp.Teardown()
+	}
 }

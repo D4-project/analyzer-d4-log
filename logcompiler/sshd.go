@@ -2,6 +2,7 @@ package logcompiler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -45,53 +46,39 @@ func (s *SSHDCompiler) Flush() error {
 	r0 := *s.r0
 	// writing in database 1
 	if _, err := r1.Do("SELECT", 1); err != nil {
-		r0.Close()
-		r1.Close()
-		return err
+		s.teardown(err)
 	}
 	// flush stats DB
 	if _, err := r1.Do("FLUSHDB"); err != nil {
-		r0.Close()
-		r1.Close()
-		return err
+		s.teardown(err)
 	}
 	log.Println("Statistics Database Flushed")
 
 	// reading from database 0
 	if _, err := r0.Do("SELECT", 0); err != nil {
-		r0.Close()
-		r1.Close()
-		return err
+		s.teardown(err)
 	}
 
 	// Compile statistics / html output for each line
 	keys, err := redis.Strings(r0.Do("KEYS", "*"))
 	if err != nil {
-		r0.Close()
-		r1.Close()
-		return err
+		s.teardown(err)
 	}
 	for _, v := range keys {
 		dateHost := strings.Split(v, ":")
 		kkeys, err := redis.StringMap(r0.Do("HGETALL", v))
 		if err != nil {
-			r0.Close()
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 
 		dateInt, err := strconv.ParseInt(dateHost[0], 10, 64)
 		if err != nil {
-			r0.Close()
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 		parsedTime := time.Unix(dateInt, 0)
 		err = compileStats(s, parsedTime, kkeys["src"], kkeys["username"], dateHost[1])
 		if err != nil {
-			r0.Close()
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 	}
 
@@ -99,7 +86,7 @@ func (s *SSHDCompiler) Flush() error {
 }
 
 // Pull pulls a line of groked sshd logline from redis
-func (s *SSHDCompiler) Pull() error {
+func (s *SSHDCompiler) Pull(c chan error) {
 	r1 := *s.r1
 
 	jsoner := json.NewDecoder(s.reader)
@@ -121,21 +108,18 @@ func (s *SSHDCompiler) Pull() error {
 
 		// Pushing loglines in database 0
 		if _, err := r1.Do("SELECT", 0); err != nil {
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 
 		// Writing logs
 		_, err = redis.Bool(r1.Do("HSET", fmt.Sprintf("%v:%v", m.SyslogTimestamp, m.SyslogHostname), "username", m.SshdInvalidUser, "src", m.SshdClientIP))
 		if err != nil {
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 
 		err = compileStats(s, parsedTime, m.SshdClientIP, m.SshdInvalidUser, m.SyslogHostname)
 		if err != nil {
-			r1.Close()
-			return err
+			s.teardown(err)
 		}
 
 		// Compiler html / jsons
@@ -144,11 +128,10 @@ func (s *SSHDCompiler) Pull() error {
 			s.nbLines = 0
 			//Non-blocking
 			if !s.compiling {
-				go s.Compile()
+				go s.compile()
 			}
 		}
 	}
-	return nil
 }
 
 func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username string, host string) error {
@@ -156,8 +139,7 @@ func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username st
 
 	// Pushing statistics in database 1
 	if _, err := r.Do("SELECT", 1); err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	}
 
 	// Daily
@@ -167,8 +149,7 @@ func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username st
 	if oldest, err := redis.String(r.Do("GET", "oldest")); err == redis.ErrNil {
 		r.Do("SET", "oldest", dstr)
 	} else if err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	} else {
 		// Check if dates are the same
 		if oldest != dstr {
@@ -184,8 +165,7 @@ func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username st
 	if newest, err := redis.String(r.Do("GET", "newest")); err == redis.ErrNil {
 		r.Do("SET", "newest", dstr)
 	} else if err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	} else {
 		// Check if dates are the same
 		if newest != dstr {
@@ -199,24 +179,21 @@ func compileStats(s *SSHDCompiler, parsedTime time.Time, src string, username st
 
 	err := compileStat(s, dstr, "daily", src, username, host)
 	if err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	}
 
 	// Monthly
 	mstr := fmt.Sprintf("%v%v", parsedTime.Year(), fmt.Sprintf("%02d", int(parsedTime.Month())))
 	err = compileStat(s, mstr, "daily", src, username, host)
 	if err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	}
 
 	// Yearly
 	ystr := fmt.Sprintf("%v", parsedTime.Year())
 	err = compileStat(s, ystr, "daily", src, username, host)
 	if err != nil {
-		r.Close()
-		return err
+		s.teardown(err)
 	}
 
 	return nil
@@ -226,41 +203,35 @@ func compileStat(s *SSHDCompiler, datestr string, mode string, src string, usern
 	r := *s.r1
 	_, err := redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statssrc"), 1, src))
 	if err != nil {
-		r.Close()
 		return err
 	}
 	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statsusername"), 1, username))
 	if err != nil {
-		r.Close()
 		return err
 	}
 	_, err = redis.String(r.Do("ZINCRBY", fmt.Sprintf("%v:%v", datestr, "statshost"), 1, host))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
 	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statssrc")))
 	if err != nil {
-		r.Close()
 		return err
 	}
 	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statsusername")))
 	if err != nil {
-		r.Close()
 		return err
 	}
 	_, err = redis.Int(r.Do("SADD", fmt.Sprintf("toupdate:%v", mode), fmt.Sprintf("%v:%v", datestr, "statshost")))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
 	return nil
 }
 
-// Compile create graphs of the results
-func (s *SSHDCompiler) Compile() error {
+// compile create json and graphical representation of the results
+func (s *SSHDCompiler) compile() error {
 	s.mu.Lock()
 	s.compiling = true
 	s.compilegr.Add(1)
@@ -269,14 +240,12 @@ func (s *SSHDCompiler) Compile() error {
 
 	// Pulling statistics from database 1
 	if _, err := r.Do("SELECT", 1); err != nil {
-		r.Close()
 		return err
 	}
 
 	// List days for which we need to update statistics
 	toupdateD, err := redis.Strings(r.Do("SMEMBERS", "toupdate:daily"))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -284,7 +253,6 @@ func (s *SSHDCompiler) Compile() error {
 	for _, v := range toupdateD {
 		err = plotStats(s, v)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -292,7 +260,6 @@ func (s *SSHDCompiler) Compile() error {
 	// List months for which we need to update statistics
 	toupdateM, err := redis.Strings(r.Do("SMEMBERS", "toupdate:monthly"))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -300,7 +267,6 @@ func (s *SSHDCompiler) Compile() error {
 	for _, v := range toupdateM {
 		err = plotStats(s, v)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -308,7 +274,6 @@ func (s *SSHDCompiler) Compile() error {
 	// List years for which we need to update statistics
 	toupdateY, err := redis.Strings(r.Do("SMEMBERS", "toupdate:yearly"))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -316,7 +281,6 @@ func (s *SSHDCompiler) Compile() error {
 	for _, v := range toupdateY {
 		err = plotStats(s, v)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -325,11 +289,9 @@ func (s *SSHDCompiler) Compile() error {
 	var newest string
 	var oldest string
 	if newest, err = redis.String(r.Do("GET", "newest")); err == redis.ErrNil {
-		r.Close()
 		return err
 	}
 	if oldest, err = redis.String(r.Do("GET", "oldest")); err == redis.ErrNil {
-		r.Close()
 		return err
 	}
 	parsedOldest, _ := time.Parse("20060102", oldest)
@@ -340,14 +302,12 @@ func (s *SSHDCompiler) Compile() error {
 	// Gettings list of years for which we have statistics
 	reply, err := redis.Values(r.Do("SCAN", "0", "MATCH", "????:*", "COUNT", 1000))
 	if err != nil {
-		r.Close()
 		return err
 	}
 	var cursor int64
 	var items []string
 	_, err = redis.Scan(reply, &cursor, &items)
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -371,13 +331,11 @@ func (s *SSHDCompiler) Compile() error {
 		var mraw []string
 		reply, err = redis.Values(r.Do("SCAN", "0", "MATCH", v+"??:*", "COUNT", 1000))
 		if err != nil {
-			r.Close()
 			return err
 		}
 
 		_, err = redis.Scan(reply, &cursor, &mraw)
 		if err != nil {
-			r.Close()
 			return err
 		}
 		for _, m := range mraw {
@@ -398,8 +356,6 @@ func (s *SSHDCompiler) Compile() error {
 	// Parse Template
 	t, err := template.ParseFiles(filepath.Join("logcompiler", "sshd", "statistics.gohtml"))
 	if err != nil {
-		r.Close()
-		log.Println(err)
 		return err
 	}
 
@@ -439,7 +395,6 @@ func (s *SSHDCompiler) Compile() error {
 	if _, err := os.Stat("data"); os.IsNotExist(err) {
 		err := os.Mkdir("data", 0700)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -447,7 +402,6 @@ func (s *SSHDCompiler) Compile() error {
 	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
 		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -463,7 +417,6 @@ func (s *SSHDCompiler) Compile() error {
 	err = t.ExecuteTemplate(f, "dailytpl", daily)
 	err = t.ExecuteTemplate(f, "footertpl", daily)
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -474,7 +427,6 @@ func (s *SSHDCompiler) Compile() error {
 	err = t.ExecuteTemplate(f, "monthlytpl", monthly)
 	err = t.ExecuteTemplate(f, "footertpl", monthly)
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -485,19 +437,18 @@ func (s *SSHDCompiler) Compile() error {
 	err = t.ExecuteTemplate(f, "yearlytpl", yearly)
 	err = t.ExecuteTemplate(f, "footertpl", yearly)
 	if err != nil {
-		r.Close()
 		return err
 	}
 
 	// Copy js asset file
 	input, err := ioutil.ReadFile(filepath.Join("logcompiler", "sshd", "load.js"))
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 
 	err = ioutil.WriteFile(filepath.Join("data", "sshd", "load.js"), input, 0644)
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 
 	log.Println("[-] SSHD compiling finished.")
@@ -513,7 +464,6 @@ func plotStats(s *SSHDCompiler, v string) error {
 	r := *s.r0
 	zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -534,7 +484,6 @@ func plotStats(s *SSHDCompiler, v string) error {
 
 	p, err := plot.New()
 	if err != nil {
-		r.Close()
 		return err
 	}
 
@@ -548,7 +497,7 @@ func plotStats(s *SSHDCompiler, v string) error {
 		p.Title.Text = "Host"
 	default:
 		p.Title.Text = ""
-		log.Println("We should not reach this point, open an issue.")
+		return errors.New("we should not reach this point, open an issue")
 	}
 
 	p.Y.Label.Text = "Count"
@@ -568,7 +517,6 @@ func plotStats(s *SSHDCompiler, v string) error {
 	if _, err := os.Stat("data"); os.IsNotExist(err) {
 		err := os.Mkdir("data", 0700)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -576,7 +524,6 @@ func plotStats(s *SSHDCompiler, v string) error {
 	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
 		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
@@ -584,14 +531,12 @@ func plotStats(s *SSHDCompiler, v string) error {
 	if _, err := os.Stat(filepath.Join("data", "sshd", stype[0])); os.IsNotExist(err) {
 		err := os.Mkdir(filepath.Join("data", "sshd", stype[0]), 0700)
 		if err != nil {
-			r.Close()
 			return err
 		}
 	}
 
 	xsize := 3 + vg.Length(math.Round(float64(len(keys)/2)))
 	if err := p.Save(15*vg.Centimeter, xsize*vg.Centimeter, filepath.Join("data", "sshd", stype[0], fmt.Sprintf("%v.svg", v))); err != nil {
-		r.Close()
 		return err
 	}
 
