@@ -58,15 +58,26 @@ var (
 )
 
 func main() {
+	// Create a chan to get the goroutines errors messages
+	pullreturn := make(chan error, 1)
+	// Create a chan to get os Signals
 	sortie := make(chan os.Signal, 1)
 	signal.Notify(sortie, os.Interrupt, os.Kill)
-	// Signal goroutine
+	// OS signaling and error handling goroutine
 	go func() {
-		<-sortie
-		fmt.Println("Exiting.")
-		compilegr.Wait()
-		log.Println("Exit")
-		os.Exit(0)
+		select {
+		case <-sortie:
+			fmt.Println("Exiting.")
+			compilegr.Wait()
+			log.Println("Exit")
+			os.Exit(0)
+		case err := <-pullreturn:
+			log.Println(err)
+			fmt.Println("Exiting.")
+			compilegr.Wait()
+			log.Println("Exit.")
+			os.Exit(1)
+		}
 	}()
 
 	// Setting up log file
@@ -153,18 +164,6 @@ func main() {
 	// Create a connection Pool for output Redis
 	redisCompilers = newPool(rp.redisHost+":"+rp.redisPort, rp.redisDBCount)
 	redisInput = newPool(ri.redisHost+":"+ri.redisPort, 16)
-
-	// Create a chan to get the goroutines errors messages
-	pullreturn := make(chan error, 1)
-	// Launching Pull routines monitoring
-	go func() {
-		select {
-		case err := <-pullreturn:
-			log.Println(err)
-			os.Exit(1)
-			log.Println("Exit.")
-		}
-	}()
 
 	// Init compiler depending on the compiler flags:
 	if *all {
