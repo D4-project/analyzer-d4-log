@@ -255,6 +255,10 @@ func (s *SSHDCompiler) compile() error {
 		if err != nil {
 			return err
 		}
+		err = csvStats(s, v)
+		if err != nil {
+			return err
+		}
 	}
 
 	// List months for which we need to update statistics
@@ -456,6 +460,57 @@ func (s *SSHDCompiler) compile() error {
 	s.mu.Unlock()
 	// Tell main program we can exit if needed now
 	s.compilegr.Done()
+
+	return nil
+}
+
+func csvStats(s *SSHDCompiler, v string) error {
+	r := *s.r0
+	zrank, err := redis.Strings(r.Do("ZRANGEBYSCORE", v, "-inf", "+inf", "WITHSCORES"))
+	if err != nil {
+		return err
+	}
+
+	stype := strings.Split(v, ":")
+
+	// Create folder to store data
+	if _, err := os.Stat("data"); os.IsNotExist(err) {
+		err := os.Mkdir("data", 0700)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join("data", "sshd")); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", "sshd"), 0700)
+		if err != nil {
+			return err
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join("data", "sshd", stype[0])); os.IsNotExist(err) {
+		err := os.Mkdir(filepath.Join("data", "sshd", stype[0]), 0700)
+		if err != nil {
+			return err
+		}
+	}
+
+	var file *os.File
+	if file, err = os.Create(filepath.Join("data", "sshd", stype[0], fmt.Sprintf("%v.csv", v))); err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	for k, v := range zrank {
+		// pair: keys
+		if (k % 2) == 0 {
+			fmt.Fprintf(file, "%s, ", v)
+			// even: values
+		} else {
+			fmt.Fprintln(file, v)
+		}
+	}
 
 	return nil
 }
