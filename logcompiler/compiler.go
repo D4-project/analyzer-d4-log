@@ -3,6 +3,7 @@ package logcompiler
 import (
 	"io"
 	"sync"
+	"time"
 
 	"github.com/D4-project/analyzer-d4-log/inputreader"
 	"github.com/gomodule/redigo/redis"
@@ -15,7 +16,7 @@ type (
 	//  Parse to parse a line of log
 	//  Flush recomputes statisitcs and recompile output
 	Compiler interface {
-		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup, *chan error)
+		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup, *chan error, time.Duration)
 		SetReader(io.Reader)
 		Pull(chan error)
 		Flush() error
@@ -40,6 +41,8 @@ type (
 		pullreturn *chan error
 		// Comutex embedding
 		comutex
+		// retry Period when applicable
+		retryPeriod time.Duration
 	}
 
 	comutex struct {
@@ -49,7 +52,7 @@ type (
 )
 
 // Set set the redis connections to this compiler
-func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, reader io.Reader, ct int, compilegr *sync.WaitGroup, c *chan error) {
+func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *redis.Conn, reader io.Reader, ct int, compilegr *sync.WaitGroup, c *chan error, retry time.Duration) {
 	s.r0 = rconn0
 	s.r1 = rconn1
 	s.reader = reader
@@ -57,6 +60,7 @@ func (s *CompilerStruct) Set(wg *sync.WaitGroup, rconn0 *redis.Conn, rconn1 *red
 	s.compiling = false
 	s.compilegr = compilegr
 	s.pullreturn = c
+	s.retryPeriod = retry
 }
 
 // SetReader Changes compiler's input

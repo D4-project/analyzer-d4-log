@@ -37,13 +37,14 @@ type (
 
 // Setting up flags
 var (
+	tmpretry, _ = time.ParseDuration("30s")
 	// Flags
 	confdir  = flag.String("c", "conf.sample", "configuration directory")
 	all      = flag.Bool("a", true, "run all compilers when set. Set by default")
 	specific = flag.String("o", "", "run only a specific parser [sshd]")
 	debug    = flag.Bool("d", false, "debug info in logs")
 	fromfile = flag.String("f", "", "parse from file on disk")
-	retry    = flag.Int("r", 1, "time in minute before retry on empty d4 queue")
+	retry    = flag.Duration("r", tmpretry, "Time in human format before retrying to read an empty d4 queue")
 	flush    = flag.Bool("F", false, "Flush HTML output, recompile all statistic from redis logs, then quits")
 	// Pools of redis connections
 	redisCompilers *redis.Pool
@@ -100,9 +101,8 @@ func main() {
 		fmt.Printf("The configuration directory should hold the following files\n")
 		fmt.Printf("to specify the settings to use:\n\n")
 		fmt.Printf(" mandatory: redis_d4 - host:port/db\n")
-		fmt.Printf(" mandatory: redis_queue - uuid\n")
 		fmt.Printf(" mandatory: redis_compilers - host:port/maxdb\n")
-		fmt.Printf(" optional: http_server - host:port\n\n")
+		//		fmt.Printf(" optional: http_server - host:port\n\n")
 		fmt.Printf("See conf.sample for an example.\n")
 	}
 
@@ -186,9 +186,9 @@ func main() {
 					log.Fatal("Could not connect to output line on Input Redis")
 				}
 				defer sshdrcon2.Close()
-				redisReader := inputreader.NewLPOPReader(&sshdrcon2, ri.redisDB, "sshd", *retry)
+				redisReader := inputreader.NewLPOPReader(&sshdrcon2, ri.redisDB, "sshd")
 				sshd := logcompiler.SSHDCompiler{}
-				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, redisReader, compilationTrigger, &compilegr, &pullreturn)
+				sshd.Set(&pullgr, &sshdrcon0, &sshdrcon1, redisReader, compilationTrigger, &compilegr, &pullreturn, *retry)
 				torun = append(torun, &sshd)
 			}
 		}

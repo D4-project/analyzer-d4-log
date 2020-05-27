@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"io/ioutil"
 	"log"
 	"math"
@@ -91,12 +92,19 @@ func (s *SSHDCompiler) Pull(c chan error) {
 
 	jsoner := json.NewDecoder(s.reader)
 
+DecodeLoop:
 	for jsoner.More() {
 		var m GrokedSSHD
 		err := jsoner.Decode(&m)
-		if err != nil {
-			log.Println(err)
+		if err := jsoner.Decode(&m); err == io.EOF {
+			// In case of EOF, we wait for the reader to have
+			// new data available
+			time.Sleep(s.retryPeriod)
+			continue DecodeLoop
+		} else if err != nil {
+			log.Fatal(err)
 		}
+
 		fmt.Printf("time: %s, hostname: %s, client_ip: %s, user: %s\n", m.SyslogTimestamp, m.SyslogHostname, m.SshdClientIP, m.SshdInvalidUser)
 
 		// Assumes the system parses logs recorded during the current year

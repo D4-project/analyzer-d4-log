@@ -3,7 +3,7 @@ module github.com/D4-project/analyzer-d4-log
 go 1.13
 
 require (
-	github.com/D4-project/d4-golang-utils v0.1.2
+	github.com/D4-project/d4-golang-utils v0.1.5
 	github.com/ajstarks/svgo v0.0.0-20200204031535-0cbcf57ea1d8 // indirect
 	github.com/gomodule/redigo v2.0.0+incompatible
 	github.com/jung-kurt/gofpdf v1.16.2 // indirect
