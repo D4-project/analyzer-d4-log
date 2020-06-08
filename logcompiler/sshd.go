@@ -97,13 +97,13 @@ func (s *SSHDCompiler) Pull(c chan error) {
 	r1 := *s.r1
 
 	for {
-	jsoner := json.NewDecoder(s.reader)
+		jsoner := json.NewDecoder(s.reader)
 	DecodeLoop:
 		for jsoner.More() {
 			var m GrokedSSHD
 			err := jsoner.Decode(&m)
 			if err := jsoner.Decode(&m); err == io.EOF {
-				// On EOF we break this loop to go to a sleep 
+				// On EOF we break this loop to go to a sleep
 				break DecodeLoop
 			} else if err != nil {
 				s.teardown(err)
@@ -532,7 +532,7 @@ func csvStats(s *SSHDCompiler, v string) error {
 	return nil
 }
 
-func MISPexport(s *SSHDCompiler) error {
+func (s *SSHDCompiler) MISPexport() error {
 
 	today := time.Now()
 	dstr := fmt.Sprintf("%v%v%v", today.Year(), fmt.Sprintf("%02d", int(today.Month())), fmt.Sprintf("%02d", int(today.Day())))

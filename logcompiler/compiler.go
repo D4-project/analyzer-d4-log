@@ -14,7 +14,7 @@ type (
 	// It should provide:
 	//  Set to assign a redis connection to it
 	//  Parse to parse a line of log
-	//  Flush recomputes statisitcs and recompile output
+	//  Flush recomputes statistics and recompile output
 	Compiler interface {
 		Set(*sync.WaitGroup, *redis.Conn, *redis.Conn, io.Reader, int, *sync.WaitGroup, *chan error, time.Duration)
 		SetReader(io.Reader)
