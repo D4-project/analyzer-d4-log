@@ -39,6 +39,12 @@ type GrokedSSHD struct {
 	SshdInvalidUser string `json:"sshd_invalid_user"`
 }
 
+type MISP_auth_failure_sshd_username struct {
+	mtype    string `json:"type"`
+	username string `json:"username"`
+	total    string `json:"total"`
+}
+
 // Flush recomputes statistics and recompile HTML output
 // TODO : review after refacto
 func (s *SSHDCompiler) Flush() error {
@@ -519,6 +525,36 @@ func csvStats(s *SSHDCompiler, v string) error {
 			fmt.Fprintln(file, v)
 		}
 	}
+
+	return nil
+}
+
+func MISPexport(s *SSHDCompiler) error {
+
+	today := time.Now()
+	dstr := fmt.Sprintf("%v%v%v", today.Year(), fmt.Sprintf("%02d", int(today.Month())), fmt.Sprintf("%02d", int(today.Day())))
+
+	r0 := *s.r0
+	r1 := *s.r1
+	zrank, err := redis.Strings(r0.Do("ZRANGEBYSCORE", fmt.Sprintf("%q:statsusername", dstr), "-inf", "+inf", "WITHSCORES"))
+	if err != nil {
+		return err
+	}
+
+	mispobject := new(MISP_auth_failure_sshd_username)
+	mispobject.mtype = "sshd"
+	for k, v := range zrank {
+		// pair: keys
+		if (k % 2) == 0 {
+			mispobject.username = v
+			// even: values
+		} else {
+			mispobject.total = v
+		}
+	}
+
+	b, err := json.Marshal(mispobject)
+	r1.Do("LPUSH", "authf_object", b)
 
 	return nil
 }

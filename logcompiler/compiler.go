@@ -20,6 +20,7 @@ type (
 		SetReader(io.Reader)
 		Pull(chan error)
 		Flush() error
+		MISPexport() error
 	}
 
 	// CompilerStruct will implements Compiler, and should be embedded in
