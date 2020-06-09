@@ -40,9 +40,10 @@ type GrokedSSHD struct {
 }
 
 type MISP_auth_failure_sshd_username struct {
-	mtype    string `json:"type"`
-	username string `json:"username"`
-	total    string `json:"total"`
+	Name     string `json:"name"`
+	Mtype    string `json:"type"`
+	Username string `json:"username"`
+	Total    string `json:"total"`
 }
 
 // Flush recomputes statistics and recompile HTML output
@@ -534,30 +535,48 @@ func csvStats(s *SSHDCompiler, v string) error {
 
 func (s *SSHDCompiler) MISPexport() error {
 
-	today := time.Now()
-	dstr := fmt.Sprintf("%v%v%v", today.Year(), fmt.Sprintf("%02d", int(today.Month())), fmt.Sprintf("%02d", int(today.Day())))
+	//today := time.Now()
+	//dstr := fmt.Sprintf("%v%v%v", today.Year(), fmt.Sprintf("%02d", int(today.Month())), fmt.Sprintf("%02d", int(today.Day())))
+
+	dstr := "20200504"
 
 	r0 := *s.r0
 	r1 := *s.r1
-	zrank, err := redis.Strings(r0.Do("ZRANGEBYSCORE", fmt.Sprintf("%q:statsusername", dstr), "-inf", "+inf", "WITHSCORES"))
+
+	// reading from database 1
+	if _, err := r0.Do("SELECT", 1); err != nil {
+		s.teardown(err)
+	}
+	// writing to database 3
+	if _, err := r1.Do("SELECT", 3); err != nil {
+		s.teardown(err)
+	}
+
+	zrank, err := redis.Strings(r0.Do("ZRANGEBYSCORE", fmt.Sprintf("%v:statsusername", dstr), "-inf", "+inf", "WITHSCORES"))
 	if err != nil {
 		return err
 	}
 
 	mispobject := new(MISP_auth_failure_sshd_username)
-	mispobject.mtype = "sshd"
+	mispobject.Name = "authentication-failure-report"
+	mispobject.Mtype = "sshd"
+
 	for k, v := range zrank {
 		// pair: keys
 		if (k % 2) == 0 {
-			mispobject.username = v
+			mispobject.Username = v
 			// even: values
 		} else {
-			mispobject.total = v
+			mispobject.Total = v
+			b, err := json.Marshal(mispobject)
+			if err != nil {
+				return err
+			}
+			if string(b) != "{}" {
+				r1.Do("LPUSH", "authf_object", b)
+			}
 		}
 	}
-
-	b, err := json.Marshal(mispobject)
-	r1.Do("LPUSH", "authf_object", b)
 
 	return nil
 }

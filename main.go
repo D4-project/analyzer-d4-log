@@ -222,9 +222,20 @@ func main() {
 		}
 
 		// we add pulling routines to a waitgroup,
-		// they can immediately die when exiting.
+		// we wait for completion on exit
 		pullgr.Add(1)
 		go v.Pull(pullreturn)
+	}
+
+	// Launching MISP export routines
+	// they can immediately die when exiting.
+	for _, v := range torun {
+		go func() {
+			ticker := time.NewTicker(20 * time.Second)
+			for _ = range ticker.C {
+				v.MISPexport()
+			}
+		}()
 	}
 
 	pullgr.Wait()
