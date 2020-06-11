@@ -538,7 +538,7 @@ func (s *SSHDCompiler) MISPexport() error {
 	//today := time.Now()
 	//dstr := fmt.Sprintf("%v%v%v", today.Year(), fmt.Sprintf("%02d", int(today.Month())), fmt.Sprintf("%02d", int(today.Day())))
 
-	dstr := "20200504"
+	dstr := "20200505"
 
 	r0 := *s.r0
 	r1 := *s.r1
@@ -552,7 +552,7 @@ func (s *SSHDCompiler) MISPexport() error {
 		s.teardown(err)
 	}
 
-	zrank, err := redis.Strings(r0.Do("ZRANGEBYSCORE", fmt.Sprintf("%v:statsusername", dstr), "-inf", "+inf", "WITHSCORES"))
+	zrank, err := redis.Strings(r0.Do("ZREVRANGEBYSCORE", fmt.Sprintf("%v:statsusername", dstr), "+inf", "-inf", "WITHSCORES", "LIMIT", 0, 100))
 	if err != nil {
 		return err
 	}
