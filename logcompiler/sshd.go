@@ -40,10 +40,12 @@ type GrokedSSHD struct {
 }
 
 type MISP_auth_failure_sshd_username struct {
-	Name     string `json:"name"`
-	Mtype    string `json:"type"`
-	Username string `json:"username"`
-	Total    string `json:"total"`
+	Name        string `json:"name"`
+	Mtype       string `json:"type"`
+	Username    string `json:"username"`
+	Destination string `json:"ip-dst"`
+	Source      string `json:"ip-src"`
+	Total       string `json:"total"`
 }
 
 // Flush recomputes statistics and recompile HTML output
@@ -552,7 +554,12 @@ func (s *SSHDCompiler) MISPexport() error {
 		s.teardown(err)
 	}
 
-	zrank, err := redis.Strings(r0.Do("ZREVRANGEBYSCORE", fmt.Sprintf("%v:statsusername", dstr), "+inf", "-inf", "WITHSCORES", "LIMIT", 0, 100))
+	zrankUsername, err := redis.Strings(r0.Do("ZREVRANGEBYSCORE", fmt.Sprintf("%v:statsusername", dstr), "+inf", "-inf", "WITHSCORES", "LIMIT", 0, 100))
+	if err != nil {
+
+	}
+
+	zrankSource, err := redis.Strings(r0.Do("ZREVRANGEBYSCORE", fmt.Sprintf("%v:statssrc", dstr), "+inf", "-inf", "WITHSCORES", "LIMIT", 0, 100))
 	if err != nil {
 		return err
 	}
@@ -561,7 +568,7 @@ func (s *SSHDCompiler) MISPexport() error {
 	mispobject.Name = "authentication-failure-report"
 	mispobject.Mtype = "sshd"
 
-	for k, v := range zrank {
+	for k, v := range zrankUsername {
 		// pair: keys
 		if (k % 2) == 0 {
 			mispobject.Username = v
@@ -578,6 +585,24 @@ func (s *SSHDCompiler) MISPexport() error {
 		}
 	}
 
+	mispobject.Username = ""
+
+	for k, v := range zrankSource {
+		// pair: keys
+		if (k % 2) == 0 {
+			mispobject.Source = v
+			// even: values
+		} else {
+			mispobject.Total = v
+			b, err := json.Marshal(mispobject)
+			if err != nil {
+				return err
+			}
+			if string(b) != "{}" {
+				r1.Do("LPUSH", "authf_object", b)
+			}
+		}
+	}
 	return nil
 }
 

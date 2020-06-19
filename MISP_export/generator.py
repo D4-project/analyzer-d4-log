@@ -7,7 +7,6 @@ import os
 import sys
 import time
 import uuid
-import pdb
 
 from pymisp import MISPEvent
 
@@ -86,6 +85,7 @@ class FeedGenerator:
 
     def add_object_to_event(self, obj_name, **data):
         """Add an object to the daily event"""
+
         self.update_daily_event_id()
         if obj_name not in self.sys_templates:
             print('Unkown object template')
@@ -93,7 +93,6 @@ class FeedGenerator:
 
         #  Get MISP object constructor
         obj_constr = self.constructor_dict.get(obj_name, None)
-        pdb.set_trace()
         #  Constructor not known, using the generic one
         if obj_constr is None:
             obj_constr = self.constructor_dict.get('generic')
@@ -175,7 +174,8 @@ class FeedGenerator:
             event = self.current_event
 
         eventFile = open(os.path.join(settings.outputdir, event_uuid+'.json'), 'w')
-        eventFile.write(event.to_json())
+        eventSupport = "{{\"Event\": {}}}".format(event.to_json())
+        eventFile.write(eventSupport)
         eventFile.close()
 
         self.save_hashes()
