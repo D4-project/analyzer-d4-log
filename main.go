@@ -51,7 +51,7 @@ var (
 	redisInput     *redis.Pool
 	// Compilers
 	compilers          = [1]string{"sshd"}
-	compilationTrigger = 20
+	compilationTrigger = 2000
 	torun              = []logcompiler.Compiler{}
 	// Routine handling
 	pullgr    sync.WaitGroup
@@ -231,7 +231,7 @@ func main() {
 	// they can immediately die when exiting.
 	for _, v := range torun {
 		go func() {
-			ticker := time.NewTicker(20 * time.Second)
+			ticker := time.NewTicker(24 * time.Hour)
 			for _ = range ticker.C {
 				v.MISPexport()
 			}
