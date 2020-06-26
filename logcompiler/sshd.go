@@ -42,9 +42,9 @@ type GrokedSSHD struct {
 type MISP_auth_failure_sshd_username struct {
 	Name        string `json:"name"`
 	Mtype       string `json:"type"`
-	Username    string `json:"username"`
-	Destination string `json:"ip-dst"`
-	Source      string `json:"ip-src"`
+	Username    string `json:"username,omitempty"`
+	Destination string `json:"ip-dst,omitempty"`
+	Source      string `json:"ip-src,omitempty"`
 	Total       string `json:"total"`
 }
 
