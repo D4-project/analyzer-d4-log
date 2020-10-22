@@ -5,7 +5,7 @@ function imgLoad(image) {
     return new Promise(function (resolve, reject) {
         // Standard XHR to load an image
         var request = new XMLHttpRequest();
-        var url = 'http://127.0.0.1:4444/data/sshd/'+image+'.svg'
+        var url = 'http://127.0.0.1:1323/data/sshd/'+image+'.svg'
         request.open('GET', url);
         request.responseType = 'blob';
         
